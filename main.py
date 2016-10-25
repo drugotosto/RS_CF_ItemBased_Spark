@@ -4,7 +4,6 @@ __author__ = 'maury'
 import json
 from statistics import mean
 from collections import defaultdict
-
 from sklearn.metrics import mean_absolute_error,mean_squared_error
 
 from conf.confRS import nFolds
