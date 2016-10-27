@@ -3,7 +3,7 @@ __author__ = 'maury'
 from pyspark import SparkContext, SparkConf
 
 class SparkEnvLocal:
-    def __int__(self):
+    def __init__(self):
         """
         Vado a settare lo SparkContext
         :return:

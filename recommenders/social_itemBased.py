@@ -1,8 +1,8 @@
 __author__ = 'maury'
 
-from recommender import Recommender
+from recommenders.itemBased import ItemBased
 
-class SocialItemBased(Recommender):
+class SocialItemBased(ItemBased):
 
     def builtModel(self):
         """

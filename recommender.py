@@ -1,60 +1,80 @@
 __author__ = 'maury'
 
 import json
+from statistics import mean
 
 from conf.confRS import topN,dirPath
-from sparkEnvLocal import SparkEnvLocal
 
 class Recommender:
 
-    def __int__(self,spEnv):
-        """
-        :param spEnv: Oggetto che rappresenta lo SparkEnviroment
-        :type spEnv: SparkEnvLoc
-        :return:
-        """
+    def __init__(self):
         self.topN=topN
         self.dirPath=dirPath
-        # Verrà settato più avanti
-        self.user_item_pairs=None
-        if spEnv:
-            self.sc=spEnv.getSc()
+         # Insieme di tutti i suggerimenti calcolari per i diversi utenti (verrà settato più avanti)
+        self.dictRec=None
+        # Risultati derivanti dalla valutazione medie delle diverse metriche utilizzate sui folds
+        self.dataEval={"nTestRates":[],"nPredPers":[],"mae":[],"rmse":[],"precision":[],"recall":[],"f1":[]}
 
-    def retiveData(self,fold):
+
+    def retriveData(self,sc,fold):
         """
         Recupero i dati (dai files) su cui poi andare a costruire il modello
         :return:
         """
-        fileName = self.dirPath+"trainSetFold_"+str(fold)+".json"
         # Recupero i dati del TrainSet creando la conseguente "matrice" dei Rate raggruppando i rates dei vari utenti
-        lines = self.sc.textFile(fileName)
+        fileName = self.dirPath+"trainSetFold_"+str(fold)+".json"
         # Costruisco un pairRDD del tipo (user,[(item,rate),(item,rate),...]) e lo rendo persistente
-        user_item_pairs = lines.map(self._parseFile).groupByKey().cache()
-        self.setUser_item_pairs(user_item_pairs)
+        parseFile=self.parseFile
+        user_item_pairs = sc.textFile(fileName).map(lambda line: parseFile(line)).groupByKey().cache()
+        return user_item_pairs
 
-    def _parseFile(line):
+    def parseFile(self,line):
         """
         Parsifico ogni linea del file e costruisco (user,(item,rate))
         """
         jsonObj = json.loads(line)
         return jsonObj[0],(jsonObj[1],float(jsonObj[2]))
 
-    def builtModel(self):
+    def builtModel(self,sc,rdd):
         """
-        Costruzione del modello a seconda dell'approccio utilizzato
+        Costruzione del modello a seconda dell'approccio utilizzato (metodo astratto...)
         :return:
         """
         pass
 
-    def saveData(self,ris):
+    def appendNTestRates(self,nTestRates):
+        self.dataEval["nTestRates"].append(nTestRates)
+
+    def appendMisuresFold(self,nPredPers,listMAEfold,listRMSEfold,recalls,precisions):
+        self.dataEval["nPredPers"].append(nPredPers)
+        # Calcolo del valore medio di MAE,RMSE sui vari utenti appartenenti al fold
+        # print("MAE (personalizzato) medio fold: {}".format(mean(listMAEfold)))
+        self.dataEval["mae"].append(mean(listMAEfold))
+        # print("RMSE (personalizzato) medio fold: {}".format(mean(listRMSEfold)))
+        self.dataEval["rmse"].append(mean(listRMSEfold))
+        # Calcolo del valore medio di precision e recall sui vari utenti appartenenti al fold
+        # print("MEAN RECALL: {}".format(mean(recalls)))
+        self.dataEval["recall"].append(mean(recalls))
+        # print("MEAN PRECISION: {}".format(mean(precisions)))
+        self.dataEval["precision"].append(mean(precisions))
+        f1=(2*mean(recalls)*mean(precisions))/(mean(recalls)+mean(precisions))
+        # print("F1 FOLD: {}".format(f1))
+        self.dataEval["f1"].append(f1)
+
+    def getTopN(self):
+        return self.topN
+
+    def setDictRec(self, dictRec):
+        self.dictRec=dictRec
+
+    def getDictRec(self):
+        return self.dictRec
+
+    def getDataEval(self):
+        return self.dataEval
+
+    def saveDataEval(self):
         """
-        Salvataggio dei dati derivanti dalla valutazione fatta
-        :param ris:
+        Salvataggio su file dei risultati derivanti dalla valutazione del recommender
         :return:
         """
-        pass
-
-    def setUser_item_pairs(self, user_item_pairs):
-        self.user_item_pairs=user_item_pairs
-
-

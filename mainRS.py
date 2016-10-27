@@ -10,8 +10,10 @@ from scipy.spatial.distance import cosine
 from sklearn.metrics import mean_absolute_error,mean_squared_error
 
 from pyspark import SparkContext, SparkConf
-from paramConfigApp import directoryPathSets
-from conf.confRS import paramWeightSim, nNeighbours, topN, nFolds
+from conf.confRS import dirPath as directoryPathSets
+from conf.confRS import nFolds,topN
+from conf.confItemBased import weightSim as paramWeightSim
+from conf.confItemBased import nNeigh as nNeighbours
 
 
 def parseFile(line):
@@ -20,7 +22,7 @@ def parseFile(line):
     """
     jsonObj = json.loads(line)
     return jsonObj[0],(jsonObj[1],float(jsonObj[2]))
-l
+
 def findItemPairs(user_id,items_with_rating):
     """
     Ciclo su tutte le possibili combinazioni di item votati dall'utente restituendone le coppie con relativi rates
