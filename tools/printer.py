@@ -1,29 +1,29 @@
 __author__ = 'maury'
 
+import os
+import json
 from statistics import mean
 
-from recommender import Recommender
+from tools.evaluator import Evaluator
 
 class Printer:
     def __init__(self):
         pass
 
-    def printRecVal(self,rs):
+    def printRecVal(self,evaluator,directory,fileName):
         """
-        Stampo dei risultati finali derivanti dalla valutazione del Recommender
-        :param rs: Recommender preso in esame
-        :type rs: Recommender
+        Salvataggio su file dei risultati finali derivanti dalla valutazione del Recommender.
+        :param evaluator: Evaluator che contiene i risultati derivanti dalla valutazione del Recommender in esame
+        :type evaluator: Evaluator
+        :param fileName: Nome del file su cui andare a scrivere i risultati ottenuti
         :return:
         """
-        print("\n\n************ Risultati Finali *************")
-        print("Numero medio ratings da predire: {}".format(mean(rs.getDataEval()["nTestRates"])))
-        print("Numero medio ratings personalizzati: {}".format(mean(rs.getDataEval()["nPredPers"])))
-        print("MAE: {}".format(mean(rs.getDataEval()["mae"])))
-        print("RMSE: {}".format(mean(rs.getDataEval()["rmse"])))
-        print("Precision: {}".format(mean(rs.getDataEval()["precision"])))
-        print("Recall: {}".format(mean(rs.getDataEval()["recall"])))
-        print("F1: {}".format(mean(rs.getDataEval()["f1"])))
-
+        # Creazione della directory se ancora assente
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        with open(fileName+".json","w") as f:
+            f.write(json.dumps({v:mean(k) for v,k in evaluator.getDataEval().items()}))
 
 if __name__ == '__main__':
-    pass
+    """ Possibilità di chiamare altri metodi per stampare dati/grafici e confrontate le prestazioni dei diversi Recommenders. """
+    pr=Printer()

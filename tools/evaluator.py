@@ -1,41 +1,27 @@
 __author__ = 'maury'
 
-import json
-from collections import defaultdict
 from sklearn.metrics import mean_absolute_error,mean_squared_error
-
-from conf.confRS import dirPath
-from recommender import Recommender
+from statistics import mean
 
 class Evaluator:
     def __init__(self):
         # Dizionario che rappresenta i dati che compongono il TestSet (verrà settato più avanti)
         self.test_ratings=None
+        # Risultati derivanti dalla valutazione medie delle diverse metriche utilizzate sui folds
+        self.dataEval={"nTestRates":[],"nPredPers":[],"mae":[],"rmse":[],"precision":[],"recall":[],"f1":[]}
 
-    def setTestRatings(self,rs,fold):
-        """
-        Costruisco il dizionario relativo al TestSet associato al dato fold preso in considerazione
-        :param fold:
-        :return:
-        """
-        # Costruisco un dizionario {user : [(item,rate),(item,rate),...] dai dati del TestSet
-        fileName = dirPath+"testSetFold_"+str(fold)+".json"
-        test_ratings=defaultdict(list)
-        nTestRates=0
-        with open(fileName) as f:
-            for line in f.readlines():
-                nTestRates+=1
-                test_ratings[json.loads(line)[0]].append((json.loads(line)[1],json.loads(line)[2]))
 
-        rs.appendNTestRates(nTestRates)
+    def setTestRatings(self,test_ratings):
         self.test_ratings=test_ratings
 
+    def appendNtestRates(self,nTestRates):
+        self.dataEval["nTestRates"].append(nTestRates)
 
-    def computeEvaluation(self,rs):
+    def computeEvaluation(self,dictRec,topN):
         """
         Calcolo delle diverse misure di valutazione per il dato Recommender passato in input per un certo fold
-        :param rs: Recommender da valutare
-        :type rs: Recommender
+        :param dictRec: Dizionario che per ogni user contiene una lista di predizioni su items ordinati [(scorePred,item),(scorePred,item),...]
+        :param topN: Parametro che definisce il numero di elementi ritornati all'utente
         :return:
         """
         precisions=[]
@@ -47,14 +33,14 @@ class Evaluator:
         # Ciclo sul dizionario del test per recuperare le coppie (ratePred,rateTest)
         for userTest,ratingsTest in self.test_ratings.items():
             # Controllo se per il suddetto utente è possibile effettuare una predizione personalizzata
-            if userTest in rs.getDictRec() and len(rs.getDictRec()[userTest])>0:
+            if userTest in dictRec and len(dictRec[userTest])>0:
                 # Coppie di (TrueRates,PredRates) preso in esame il tale utente
                 pairsRatesPers=[]
                 # Numero di items tra quelli ritenuti rilevanti dall'utente che sono stati anche fatti tornare
                 numTorRil=0
                 # Numero totale di items ritenuti rilevanti dall'utente
                 nTotRil=0
-                predRates,items=zip(*rs.getDictRec()[userTest])
+                predRates,items=zip(*dictRec[userTest])
                 # Ciclo su tutti gli items per cui devo predire il rate
                 for item,rate in ratingsTest:
                     # Controllo che l'item sia tra quelli per cui si è fatta una predizione
@@ -67,7 +53,7 @@ class Evaluator:
                     if rate>3:
                         nTotRil+=1
                         #  Controllo nel caso sia presente nei TopN suggeriti
-                        if item in items[:rs.getTopN()]:
+                        if item in items[:topN]:
                             numTorRil+=1
 
                 if pairsRatesPers:
@@ -84,8 +70,26 @@ class Evaluator:
                     # Calcolo della RECALL per il tale utente sotto esame
                     recalls.append(numTorRil/nTotRil)
                     # Calcolo della PRECISION per il tale utente sotto esame
-                    precisions.append(numTorRil/rs.getTopN())
+                    precisions.append(numTorRil/topN)
 
         # Registro le valutazioni appena calcolare per il fold preso in considerazione
-        rs.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions)
+        self.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions)
 
+    def appendMisuresFold(self,nPredPers,listMAEfold,listRMSEfold,recalls,precisions):
+        self.dataEval["nPredPers"].append(nPredPers)
+        # Calcolo del valore medio di MAE,RMSE sui vari utenti appartenenti al fold
+        # print("MAE (personalizzato) medio fold: {}".format(mean(listMAEfold)))
+        self.dataEval["mae"].append(mean(listMAEfold))
+        # print("RMSE (personalizzato) medio fold: {}".format(mean(listRMSEfold)))
+        self.dataEval["rmse"].append(mean(listRMSEfold))
+        # Calcolo del valore medio di precision e recall sui vari utenti appartenenti al fold
+        # print("MEAN RECALL: {}".format(mean(recalls)))
+        self.dataEval["recall"].append(mean(recalls))
+        # print("MEAN PRECISION: {}".format(mean(precisions)))
+        self.dataEval["precision"].append(mean(precisions))
+        f1=(2*mean(recalls)*mean(precisions))/(mean(recalls)+mean(precisions))
+        # print("F1 FOLD: {}".format(f1))
+        self.dataEval["f1"].append(f1)
+
+    def getDataEval(self):
+        return self.dataEval
