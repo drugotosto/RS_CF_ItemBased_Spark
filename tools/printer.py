@@ -24,6 +24,17 @@ class Printer:
         with open(fileName+".json","w") as f:
             f.write(json.dumps({v:mean(k) for v,k in evaluator.getDataEval().items()}))
 
+    def saveJsonData(self,data,fileName):
+        """
+        Salva sul file (un elemento per riga) i dati passati in formato json
+        :param data: Dati da salvare su file in json
+        :param fileName: Nome del file su cui andare a salvare i dati
+        :return:
+        """
+        with open(fileName,"w") as f:
+            for dato in data:
+                f.write(json.dumps(dato)+"\n")
+
 if __name__ == '__main__':
     """ Possibilità di chiamare altri metodi per stampare dati/grafici e confrontate le prestazioni dei diversi Recommenders. """
     pr=Printer()

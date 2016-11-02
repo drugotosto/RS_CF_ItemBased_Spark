@@ -2,28 +2,76 @@ __author__ = 'maury'
 
 import json
 from collections import defaultdict
+from pyspark import SparkContext
 
 from tools.evaluator import Evaluator
-from conf.confRS import topN,dirPathInput,dirPathOutput
+from conf.confRS import topN, dirPathInput, datasetJSON, nFolds, percTestRates
+
 
 class Recommender:
     def __init__(self,name):
         self.name=name
         self.topN=topN
-        self.dirPathInput=dirPathInput
-        self.dirPathOutput=dirPathOutput
          # Insieme di tutti i suggerimenti calcolari per i diversi utenti (verrà settato più avanti)
         self.dictRec=None
         # Inizializzazione Evaluatore
         self.evaluator=Evaluator()
 
-    def retrieveTrainData(self,sc,fold):
+
+    def createFolds(self,sc,usersFolds):
         """
-        Recupero i dati (dai files) su cui poi andare a costruire il modello
+        Creazione dei diversi TestSetFold/TrainTestFold partendo dal DataSet presente su file
+        :param sc: SparkContext utilizzato
+        :type sc: SparkContext
+        :param usersFolds: Lista di folds che separano i diversi utenti
         :return:
         """
-        # Recupero i dati del TrainSet creando la conseguente "matrice" dei Rate raggruppando i rates dei vari utenti
-        fileName = self.dirPathInput+"trainSetFold_"+str(fold)+".json"
+        rdd=self.retrieveRatingsByUser(sc,datasetJSON)
+        print("\nLettura File 'dataSet.json' e creazione RDD completata")
+        fold=0
+        # Ciclo sul numero di folds stabiliti andando a creare ogni volta i trainSetFold e testSetFold corrispondenti
+        while fold<nFolds:
+
+            """ Costruizione dell'RDD che costituirà il TestSetFold finale """
+            trainUsers=sc.parallelize([item for sublist in usersFolds[:fold]+usersFolds[fold+1:] for item in sublist]).map(lambda x: (x,1))
+            rddTestData=rdd.subtractByKey(trainUsers)
+            # Costruisco un Pair RDD filtrato dei soli users appartenenti al dato fold del tipo (user,([(user,item,score),...,(user,item,score)],[(user,item,score),...,(user,item,score)]))
+            test_trainParz=rddTestData.map(lambda item: Recommender.addUser(item[0],item[1])).map(lambda item: Recommender.divideTrain_Test(item[0],item[1],percTestRates))
+            # Recupero la prima parte del campo Value di ogni elemento che rappresenta il TestSet del fold
+            testSetData=test_trainParz.values().keys().flatMap(lambda x: x)
+
+            """ Costruizione dell'RDD che costituirà il TrainSetFold finale """
+            # Recupero la seconda parte del campo Value di ogni elemento che rappresenta una prima parte del TrainTest del fold
+            trainSetData2=test_trainParz.values().values().filter(lambda x: x).flatMap(lambda x: x)
+            testUsers=sc.parallelize(usersFolds[fold]).map(lambda x: (x,1))
+            trainSetData1=rdd.subtractByKey(testUsers).map(lambda item: Recommender.addUser(item[0],item[1])).values().flatMap(lambda x: x)
+            trainSetData=trainSetData1.union(trainSetData2).distinct()
+
+            testSetData.map(lambda x: json.dumps(x)).saveAsTextFile(dirPathInput+"test_"+str(fold))
+            trainSetData.map(lambda x: json.dumps(x)).saveAsTextFile(dirPathInput+"train_"+str(fold))
+            fold+=1
+
+    @staticmethod
+    def addUser(user,item_with_rating):
+        newList=[(user,elem[0],elem[1]) for elem in item_with_rating]
+        return user,newList
+
+    @staticmethod
+    def divideTrain_Test(user_id,user_item_rating,percTestRates):
+        numElTest=int(len(user_item_rating)*percTestRates)
+        if numElTest<1:
+            numElTest=1
+        dati=[elem for elem in user_item_rating]
+        return user_id,(dati[:numElTest],dati[numElTest:])
+
+    def retrieveRatingsByUser(self,sc,fileName):
+        """
+        Creando la "matrice" dei Rates raggruppandoli secondo i vari utenti
+        :param sc: SparkContext utilizzato
+        :type sc: SparkContext
+        :param fileName: Filename dal quale recuperare i dati
+        :return: RDD (user,[(item,score),(item,score),...])
+        """
         # Costruisco un pairRDD del tipo (user,[(item,rate),(item,rate),...]) e lo rendo persistente
         parseFileUser=self.parseFileUser
         user_item_pairs = sc.textFile(fileName).map(lambda line: parseFileUser(line)).groupByKey().cache()
@@ -56,7 +104,8 @@ class Recommender:
         with open(fileName) as f:
             for line in f.readlines():
                 nTestRates+=1
-                test_ratings[json.loads(line)[0]].append((json.loads(line)[1],json.loads(line)[2]))
+                jsonLine=json.loads(line)
+                test_ratings[jsonLine[0]].append((jsonLine[1],jsonLine[2]))
 
         self.evaluator.setTestRatings(test_ratings)
         self.evaluator.appendNtestRates(nTestRates)
@@ -79,5 +128,4 @@ class Recommender:
     def getEvaluator(self):
         return self.evaluator
 
-    def getDirPathOutput(self):
-        return self.dirPathOutput
+
