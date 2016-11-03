@@ -5,7 +5,7 @@ from itertools import islice
 import pandas as pd
 import json
 
-from conf.confRS import reviewsJSON, businessJSON
+from conf.confDirFiles import reviewsJSON, businessJSON
 
 class DataScienceAnalyzer():
     def __init__(self,categoria):
