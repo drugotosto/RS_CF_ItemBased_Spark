@@ -4,13 +4,11 @@ import os
 import json
 import shutil
 from os import listdir
-from os.path import isfile
-from functools import reduce
 from collections import defaultdict
 from pyspark import SparkContext
 
 from tools.evaluator import Evaluator
-from conf.confDirFiles import dirPathInput, datasetJSON, dirFolds, dirTrainSet
+from conf.confDirFiles import datasetJSON, dirFolds, dirTest, dirTrain
 from conf.confRS import topN, nFolds, percTestRates
 
 
@@ -35,15 +33,15 @@ class Recommender:
         # Elimino la cartella che contiene i diversi files che rappresentano i diversi folds
         if os.path.exists(dirFolds):
             shutil.rmtree(dirFolds)
-        rdd=self.retrieveRatingsByUser(sc,datasetJSON)
-        print("\nLettura File 'dataSet.json' e creazione RDD completata")
+        # Creo la "matrice" dei Rates raggruppandoli secondo i vari utenti ottengo (user,[(item,score),(item,score),...])
+        user_item_pair=sc.textFile(datasetJSON).map(lambda line: Recommender.parseFileUser(line)).groupByKey()
         fold=0
         # Ciclo sul numero di folds stabiliti andando a creare ogni volta i trainSetFold e testSetFold corrispondenti
         while fold<nFolds:
 
             """ Costruizione dell'RDD che costituirà il TestSetFold finale """
             trainUsers=sc.parallelize([item for sublist in usersFolds[:fold]+usersFolds[fold+1:] for item in sublist]).map(lambda x: (x,1))
-            rddTestData=rdd.subtractByKey(trainUsers)
+            rddTestData=user_item_pair.subtractByKey(trainUsers)
             # Costruisco un Pair RDD filtrato dei soli users appartenenti al dato fold del tipo (user,([(user,item,score),...,(user,item,score)],[(user,item,score),...,(user,item,score)]))
             test_trainParz=rddTestData.map(lambda item: Recommender.addUser(item[0],item[1])).map(lambda item: Recommender.divideTrain_Test(item[0],item[1],percTestRates))
             # Recupero la prima parte del campo Value di ogni elemento che rappresenta il TestSet del fold
@@ -53,11 +51,11 @@ class Recommender:
             # Recupero la seconda parte del campo Value di ogni elemento che rappresenta una prima parte del TrainTest del fold
             trainSetData2=test_trainParz.values().values().filter(lambda x: x).flatMap(lambda x: x)
             testUsers=sc.parallelize(usersFolds[fold]).map(lambda x: (x,1))
-            trainSetData1=rdd.subtractByKey(testUsers).map(lambda item: Recommender.addUser(item[0],item[1])).values().flatMap(lambda x: x)
+            trainSetData1=user_item_pair.subtractByKey(testUsers).map(lambda item: Recommender.addUser(item[0],item[1])).values().flatMap(lambda x: x)
             trainSetData=trainSetData1.union(trainSetData2).distinct()
 
-            testSetData.map(lambda x: json.dumps(x)).saveAsTextFile(dirFolds+"test_"+str(fold))
-            trainSetData.map(lambda x: json.dumps(x)).saveAsTextFile(dirFolds+"train_"+str(fold))
+            testSetData.map(lambda x: json.dumps(x)).saveAsTextFile(dirTest+str(fold))
+            trainSetData.map(lambda x: json.dumps(x)).saveAsTextFile(dirTrain+str(fold))
             fold+=1
 
     @staticmethod
@@ -72,40 +70,6 @@ class Recommender:
             numElTest=1
         dati=[elem for elem in user_item_rating]
         return user_id,(dati[:numElTest],dati[numElTest:])
-
-    def retrieveRatingsByUser(self,sc,fileName):
-        """
-        Creando la "matrice" dei Rates raggruppandoli secondo i vari utenti
-        :param sc: SparkContext utilizzato
-        :type sc: SparkContext
-        :param fileName: Filename dal quale recuperare i dati
-        :return: RDD (user,[(item,score),(item,score),...])
-        """
-        # Costruisco un pairRDD del tipo (user,[(item,rate),(item,rate),...]) e lo rendo persistente
-        user_item_pairs = sc.textFile(fileName).map(lambda line: Recommender.parseFileUser(line)).groupByKey()
-        return user_item_pairs
-
-    def retrieveTrainDataFold(self, sc, directory):
-        """
-        Recupero ed unisco tutti i files presenti nella cartella di train_k per formare un RDD risultante
-        :param sc: SparkContext utilizzato
-        :type sc: SparkContext
-        :param directory: Directory contenente i diversi files contenenti a loro volta i vari rates
-        :return: RDD risultante (user,(item,rate))
-        """
-        listaRDD=[sc.textFile(directory+"/"+fileName).map(lambda line: Recommender.parseFileUser(line)) for fileName in listdir(directory) if fileName.startswith("part")]
-        # Dopo aver costruito da ogni file il relativo RDD ne faccio l'unione globale
-        rdd=reduce(lambda x,y: x.union(y),listaRDD)
-        if os.path.exists(dirTrainSet):
-            shutil.rmtree(dirTrainSet)
-        user_item_rating=rdd.map(lambda x: (x[0],x[1][0],x[1][1]))
-        # Salvataggio del RDD in formato json
-        user_item_rating.map(lambda x: json.dumps(x)).saveAsTextFile(dirTrainSet)
-
-        # for item in rdd.take(3):
-        #     print("\nUSER: {}".format(item[0]))
-        #     for elem in item[1]:
-        #         print("ITEM: {} - SCORE: {}".format(elem[0],elem[1]))
 
     @staticmethod
     def parseFileUser(line):
@@ -136,16 +100,17 @@ class Recommender:
         """
         pass
 
-    def retrieveTestData(self,fold):
+    def retrieveTestData(self,directory):
         # Costruisco un dizionario {user : [(item,rate),(item,rate),...] dai dati del TestSet
-        fileName = dirPathInput+"testSetFold_"+str(fold)+".json"
+        files=[file for file in listdir("/home/maury/Desktop/SparkSets/Folds/test_0") if file.startswith("part-")]
         test_ratings=defaultdict(list)
         nTestRates=0
-        with open(fileName) as f:
-            for line in f.readlines():
-                nTestRates+=1
-                jsonLine=json.loads(line)
-                test_ratings[jsonLine[0]].append((jsonLine[1],jsonLine[2]))
+        for fileName in files:
+            with open(directory+"/"+fileName) as f:
+                for line in f.readlines():
+                    nTestRates+=1
+                    jsonLine=json.loads(line)
+                    test_ratings[jsonLine[0]].append((jsonLine[1],jsonLine[2]))
 
         self.evaluator.setTestRatings(test_ratings)
         self.evaluator.appendNtestRates(nTestRates)

@@ -11,11 +11,10 @@ dirPathOutput="/home/maury/Desktop/SparkOutput/"# File delle Reviews
 # Directory contenete i diversi Folds di train/test sets
 dirFolds=dirPathInput+"Folds/"
 # Directory contenente i files che a loro volta contengono i dati di un testSet
-dirTest=dirFolds+"test_/"
+dirTest=dirFolds+"test_"
 # Directory contenente i files che a loro volta contengono i dati di un testSet
 dirTrain=dirFolds+"train_"
-# Directory contenente l'insieme di rates (per ogni fold) dai quali costruire ogni volta il modello finale
-dirTrainSet=dirPathInput+"trainSet"
+
 # File delle Reviews
 reviewsJSON=directoryDataSets+"yelp_academic_dataset_review.json"
 # File dei Business
