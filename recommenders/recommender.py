@@ -115,9 +115,6 @@ class Recommender:
         self.evaluator.setTestRatings(test_ratings)
         self.evaluator.appendNtestRates(nTestRates)
 
-    def runEvaluation(self):
-        self.evaluator.computeEvaluation(self.dictRec,self.topN)
-
     def getName(self):
         return str(self.name)
 

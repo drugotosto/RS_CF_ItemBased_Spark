@@ -3,12 +3,14 @@ __author__ = 'maury'
 from sklearn.metrics import mean_absolute_error,mean_squared_error
 from statistics import mean
 
+from tools.dataSetAnalyzer import DataScienceAnalyzer
+
 class Evaluator:
     def __init__(self):
         # Dizionario che rappresenta i dati che compongono il TestSet (verrà settato più avanti)
         self.test_ratings=None
         # Risultati derivanti dalla valutazione medie delle diverse metriche utilizzate sui folds
-        self.dataEval={"nTestRates":[],"nPredPers":[],"mae":[],"rmse":[],"precision":[],"recall":[],"f1":[]}
+        self.dataEval={"nTestRates":[],"nPredPers":[],"mae":[],"rmse":[],"precision":[],"recall":[],"f1":[],"covUsers":[],"covMedioBus":[]}
 
 
     def setTestRatings(self,test_ratings):
@@ -17,11 +19,13 @@ class Evaluator:
     def appendNtestRates(self,nTestRates):
         self.dataEval["nTestRates"].append(nTestRates)
 
-    def computeEvaluation(self,dictRec,topN):
+    def computeEvaluation(self,dictRec,topN,analyzer):
         """
         Calcolo delle diverse misure di valutazione per il dato Recommender passato in input per un certo fold
         :param dictRec: Dizionario che per ogni user contiene una lista di predizioni su items ordinati [(scorePred,item),(scorePred,item),...]
         :param topN: Parametro che definisce il numero di elementi ritornati all'utente
+        :param analyzer: Analizzatore del DataSet originale dato in input
+        :type analyzer: DataScienceAnalyzer
         :return:
         """
         precisions=[]
@@ -72,10 +76,25 @@ class Evaluator:
                     # Calcolo della PRECISION per il tale utente sotto esame
                     precisions.append(numTorRil/topN)
 
-        # Registro le valutazioni appena calcolare per il fold preso in considerazione
-        self.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions)
+        """************** Calcolo delle CoverageItems/CoverageUsers *****************"""
+        percUsers,percMedioBus=self.computeCoverage(analyzer,dictRec)
 
-    def appendMisuresFold(self,nPredPers,listMAEfold,listRMSEfold,recalls,precisions):
+        # Registro le valutazioni appena calcolare per il fold preso in considerazione
+        self.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus)
+
+    def computeCoverage(self,analyzer,dictRec):
+        # ************************ CoverageItems ***********************
+        # _,items=zip(*[pair for user,listaPair in dictRec.items() for pair in listaPair if listaPair])
+        # numBusinessPers=len(set(items))
+        # percBus=numBusinessPers/analyzer.getNumBusiness()
+
+        # *********************** CoverageUsers ************************
+        dictUserPercBus={user:len(set([pair[1] for pair in listaPair]))/analyzer.getNumBusiness() for user,listaPair in dictRec.items() if listaPair}
+        percUsers=len(dictUserPercBus)/analyzer.getNumUsers()
+        percMedioBus=sum(dictUserPercBus.values())/len(dictUserPercBus)
+        return percUsers,percMedioBus
+
+    def appendMisuresFold(self,nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus):
         self.dataEval["nPredPers"].append(nPredPers)
         # Calcolo del valore medio di MAE,RMSE sui vari utenti appartenenti al fold
         # print("MAE (personalizzato) medio fold: {}".format(mean(listMAEfold)))
@@ -90,6 +109,10 @@ class Evaluator:
         f1=(2*mean(recalls)*mean(precisions))/(mean(recalls)+mean(precisions))
         # print("F1 FOLD: {}".format(f1))
         self.dataEval["f1"].append(f1)
+        # print("\nAl {} % di Users riusciamo a fornire dei suggerimenti per 'mediamente' il {} % dei Business totali".format(percUsers,percMedioBus))
+        self.dataEval["covMedioBus"].append(percMedioBus)
+        self.dataEval["covUsers"].append(percUsers)
+
 
     def getDataEval(self):
         return self.dataEval

@@ -10,7 +10,8 @@ from conf.confDirFiles import reviewsJSON, businessJSON
 class DataScienceAnalyzer():
     def __init__(self,categoria):
         self.categoria=categoria
-
+        self.numBusiness=None
+        self.numUsers=None
 
     def createDataSet(self):
         # LETTURA DEL FILE JSON DELLE REVIEWS A PEZZI PER LA COSTRUZIONE DEL DATAFRAME CHE SERVIRÀ IN FASE DI PREDIZIONE DEI RATES
@@ -20,6 +21,8 @@ class DataScienceAnalyzer():
         # Merge dei dataframe tra RATINGS e BUSINESS e Selezione dei soli ratings appartenenti ad una specifica categoria
         dfMergeRB=pd.merge(dfRatings,dfBusiness,left_on='business_id',right_index=True, how="inner")
         dfMergeRB=dfMergeRB[dfMergeRB["categories"].apply(lambda x: bool(set(x).intersection([self.categoria])))]
+        self.setNumBusiness(dfMergeRB["business_id"].unique().shape[0])
+        self.setNumUsers(dfMergeRB["user_id"].unique().shape[0])
         print("\nDataFrame Merge finale creato!")
         return dfMergeRB
 
@@ -64,6 +67,18 @@ class DataScienceAnalyzer():
         dfBusiness=DataFrame({"business_name": businessName,"categories": businessCat},columns=["business_name","categories"],index=businessID)
         print("\nDataFrame dei Business creato!")
         return dfBusiness
+
+    def setNumBusiness(self,numBusiness):
+        self.numBusiness=numBusiness
+
+    def setNumUsers(self,numUsers):
+        self.numUsers=numUsers
+
+    def getNumBusiness(self):
+        return self.numBusiness
+
+    def getNumUsers(self):
+        return self.numUsers
 
 if __name__ == '__main__':
     pass
