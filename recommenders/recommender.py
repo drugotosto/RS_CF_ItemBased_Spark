@@ -9,13 +9,12 @@ from pyspark import SparkContext
 
 from tools.evaluator import Evaluator
 from conf.confDirFiles import datasetJSON, dirFolds, dirTest, dirTrain
-from conf.confRS import topN, nFolds, percTestRates
+from conf.confRS import nFolds, percTestRates
 
 
 class Recommender:
     def __init__(self,name):
         self.name=name
-        self.topN=topN
          # Insieme di tutti i suggerimenti calcolari per i diversi utenti (verrà settato più avanti)
         self.dictRec=None
         # Inizializzazione Evaluatore
@@ -117,9 +116,6 @@ class Recommender:
 
     def getName(self):
         return str(self.name)
-
-    def getTopN(self):
-        return self.topN
 
     def setDictRec(self, dictRec):
         self.dictRec=dictRec

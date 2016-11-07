@@ -3,14 +3,14 @@ __author__ = 'maury'
 from sklearn.metrics import mean_absolute_error,mean_squared_error
 from statistics import mean
 
-from tools.dataSetAnalyzer import DataScienceAnalyzer
+from conf.confRS import topN
 
 class Evaluator:
     def __init__(self):
         # Dizionario che rappresenta i dati che compongono il TestSet (verrà settato più avanti)
         self.test_ratings=None
         # Risultati derivanti dalla valutazione medie delle diverse metriche utilizzate sui folds
-        self.dataEval={"nTestRates":[],"nPredPers":[],"mae":[],"rmse":[],"precision":[],"recall":[],"f1":[],"covUsers":[],"covMedioBus":[]}
+        self.dataEval={"nTestRates":[],"nPredPers":[],"mae":[],"rmse":[],"precision":[],"recall":[],"f1":[],"covUsers":[],"covMedioBus":[],"diversity":[]}
 
 
     def setTestRatings(self,test_ratings):
@@ -19,11 +19,12 @@ class Evaluator:
     def appendNtestRates(self,nTestRates):
         self.dataEval["nTestRates"].append(nTestRates)
 
-    def computeEvaluation(self,dictRec,topN,analyzer):
+    def computeEvaluation(self,sc,dictRec,analyzer):
         """
         Calcolo delle diverse misure di valutazione per il dato Recommender passato in input per un certo fold
+        :param sc: SparkContext
+        :type sc: SparkContext
         :param dictRec: Dizionario che per ogni user contiene una lista di predizioni su items ordinati [(scorePred,item),(scorePred,item),...]
-        :param topN: Parametro che definisce il numero di elementi ritornati all'utente
         :param analyzer: Analizzatore del DataSet originale dato in input
         :type analyzer: DataScienceAnalyzer
         :return:
@@ -32,6 +33,7 @@ class Evaluator:
         recalls=[]
         listMAEfold=[]
         listRMSEfold=[]
+        listDiversityFold=[]
         # Numero di predizioni personalizzate che si è stati in grado di fare su tutto il fold
         nPredPers=0
         # Ciclo sul dizionario del test per recuperare le coppie (ratePred,rateTest)
@@ -79,8 +81,14 @@ class Evaluator:
         """************** Calcolo delle CoverageItems/CoverageUsers *****************"""
         percUsers,percMedioBus=self.computeCoverage(analyzer,dictRec)
 
+        """*************************** Calcolo Diversity ***********************"""
+        business=sc.parallelize(dictRec.items()).filter(lambda x: len(x[1]) > 1).map(lambda x: Evaluator.collectBus(x[1]))
+        dictBusCat=sc.broadcast(analyzer.getDictBusCat())
+        listDiversity=business.map(lambda x: Evaluator.computeDiversity(x,dictBusCat.value,analyzer.getNumCatBus())).collect()
+        diversity=sum(listDiversity)/len(listDiversity)
+
         # Registro le valutazioni appena calcolare per il fold preso in considerazione
-        self.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus)
+        self.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus,diversity)
 
     def computeCoverage(self,analyzer,dictRec):
         # ************************ CoverageItems ***********************
@@ -88,13 +96,23 @@ class Evaluator:
         # numBusinessPers=len(set(items))
         # percBus=numBusinessPers/analyzer.getNumBusiness()
 
-        # *********************** CoverageUsers ************************
+        # *********************** Coverage Users/Items ************************
         dictUserPercBus={user:len(set([pair[1] for pair in listaPair]))/analyzer.getNumBusiness() for user,listaPair in dictRec.items() if listaPair}
         percUsers=len(dictUserPercBus)/analyzer.getNumUsers()
         percMedioBus=sum(dictUserPercBus.values())/len(dictUserPercBus)
         return percUsers,percMedioBus
 
-    def appendMisuresFold(self,nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus):
+    @staticmethod
+    def computeDiversity(listBusiness, dictBusCat, numCatBus):
+        """
+        Calcolo della dìversità media degi Business presenti nella Top-N di ogni utente
+        :param dictRec: Dizionario che per ogni user contiene una lista di predizioni su items ordinati (user:[(scorePred,item),(scorePred,item),...])
+        :param topN: Parametro che definisce lunghezza della lista dei Business suggeriti
+        :return: Valore medio di Diversity
+        """
+        return len({cat for bus in listBusiness for cat in dictBusCat[bus]})/numCatBus
+
+    def appendMisuresFold(self,nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus,diversity):
         self.dataEval["nPredPers"].append(nPredPers)
         # Calcolo del valore medio di MAE,RMSE sui vari utenti appartenenti al fold
         # print("MAE (personalizzato) medio fold: {}".format(mean(listMAEfold)))
@@ -112,7 +130,17 @@ class Evaluator:
         # print("\nAl {} % di Users riusciamo a fornire dei suggerimenti per 'mediamente' il {} % dei Business totali".format(percUsers,percMedioBus))
         self.dataEval["covMedioBus"].append(percMedioBus)
         self.dataEval["covUsers"].append(percUsers)
-
+        # Calcolo del valore medio di diversity per il dato Fold mediato su tutti gli users
+        self.dataEval["diversity"].append(diversity)
 
     def getDataEval(self):
         return self.dataEval
+
+    @staticmethod
+    def collectBus(listPairs):
+        business=[]
+        if listPairs:
+            _,business=zip(*listPairs)
+        return business[:topN]
+
+

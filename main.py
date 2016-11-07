@@ -2,10 +2,6 @@ __author__ = 'maury'
 
 import time
 
-import numpy as np
-
-from numpy.random import choice
-
 from conf.confRS import nFolds,categoria
 from conf.confDirFiles import  datasetJSON, dirPathOutput, dirPathInput, dirTrain, dirTest
 from conf.confItemBased import typeSimilarity
@@ -39,13 +35,12 @@ if __name__ == '__main__':
 
         """ Costruzione del modello a seconda dell'approccio utilizzato """
         rs.builtModel(spEnv.getSc(),dirTrain+str(fold))
-        print("\nTempo impiegato per costruire il modello: {} sec.".format((time.time()-startTime)/60))
         """
         Ho calcolato tutte le possibile raccomandazioni personalizzare per i vari utenti con tanto di predizione per ciascun item
         Eseguo la valutazione del recommender utilizzando le diverse metriche (MAE,RMSE,Precision,Recall,...)
         """
         rs.retrieveTestData(dirTest+str(fold))
-        rs.getEvaluator().computeEvaluation(rs.getDictRec(),rs.getTopN(),analyzer)
+        rs.getEvaluator().computeEvaluation(spEnv.getSc(),rs.getDictRec(),analyzer)
         print("\nEseguita Valutazione per Fold {}".format(fold))
         fold+=1
 

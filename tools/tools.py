@@ -3,9 +3,6 @@ __author__ = 'maury'
 import os
 import json
 from statistics import mean
-import shutil
-
-from tools.evaluator import Evaluator
 
 
 def printRecVal(evaluator,directory,fileName):
