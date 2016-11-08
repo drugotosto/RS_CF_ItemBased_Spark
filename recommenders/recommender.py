@@ -101,7 +101,7 @@ class Recommender:
 
     def retrieveTestData(self,directory):
         # Costruisco un dizionario {user : [(item,rate),(item,rate),...] dai dati del TestSet
-        files=[file for file in listdir("/home/maury/Desktop/SparkSets/Folds/test_0") if file.startswith("part-")]
+        files=[file for file in listdir(directory) if file.startswith("part-")]
         test_ratings=defaultdict(list)
         nTestRates=0
         for fileName in files:

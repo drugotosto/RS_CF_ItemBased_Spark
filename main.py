@@ -1,6 +1,8 @@
 __author__ = 'maury'
 
 import time
+import numpy as np
+from numpy.random import choice
 
 from conf.confRS import nFolds,categoria
 from conf.confDirFiles import  datasetJSON, dirPathOutput, dirPathInput, dirTrain, dirTest
@@ -11,6 +13,7 @@ from tools.sparkEnvLocal import SparkEnvLocal
 from tools.dataSetAnalyzer import DataScienceAnalyzer
 
 if __name__ == '__main__':
+    startTime=time.time()
     # Creazione dello SparkContext
     spEnv=SparkEnvLocal()
     # Instanzio Recommender
@@ -21,8 +24,6 @@ if __name__ == '__main__':
     dfMergeRB=analyzer.createDataSet()
     # saveJsonData(dfMergeRB[["user_id","business_id","stars"]].values.tolist(),dirPathInput,datasetJSON)
     #
-    # # **************** Effettuo diversi test costruendo per ognuno di essi Folds con users differenti ****************
-    startTime=time.time()
     # """ Creazione dei files (trainSetFold_k/testSetFold_k) per ogni prova di valutazione"""
     # # SUDDIVISIONE DEGLI UTENTI IN K_FOLD (k=5)
     # usersFolds=np.array_split(choice(dfMergeRB["user_id"].unique(),dfMergeRB["user_id"].unique().shape[0],replace=False),5)
@@ -47,6 +48,6 @@ if __name__ == '__main__':
     """
     Salvataggio su file (json) dei risultati finali di valutazione (medie dei valori sui folds)
     """
-    printRecVal(evaluator=rs.getEvaluator(),directory=dirPathOutput,fileName=dirPathOutput+rs.getName()+typeSimilarity)
-    print("\nComputazione terminata! Durata della prova: {} min.".format((time.time()-startTime)/60))
+    printRecVal(evaluator=rs.getEvaluator(),directory=dirPathOutput,fileName=dirPathOutput+rs.getName()+typeSimilarity+categoria)
+    print("\nComputazione terminata! Durata totale: {} min.".format((time.time()-startTime)/60))
 

@@ -84,7 +84,8 @@ class Evaluator:
         """*************************** Calcolo Diversity ***********************"""
         business=sc.parallelize(dictRec.items()).filter(lambda x: len(x[1]) > 1).map(lambda x: Evaluator.collectBus(x[1]))
         dictBusCat=sc.broadcast(analyzer.getDictBusCat())
-        listDiversity=business.map(lambda x: Evaluator.computeDiversity(x,dictBusCat.value,analyzer.getNumCatBus())).collect()
+        numCatBus=analyzer.getNumCatBus()
+        listDiversity=business.map(lambda x: Evaluator.computeDiversity(x,dictBusCat.value,numCatBus)).collect()
         diversity=sum(listDiversity)/len(listDiversity)
 
         # Registro le valutazioni appena calcolare per il fold preso in considerazione
