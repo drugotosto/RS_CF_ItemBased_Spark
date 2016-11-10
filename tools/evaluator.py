@@ -1,3 +1,5 @@
+from tools.tools import deep_getsizeof
+
 __author__ = 'maury'
 
 from sklearn.metrics import mean_absolute_error,mean_squared_error
@@ -82,14 +84,20 @@ class Evaluator:
         percUsers,percMedioBus=self.computeCoverage(analyzer,dictRec)
 
         """*************************** Calcolo Diversity ***********************"""
-        business=sc.parallelize(dictRec.items()).filter(lambda x: len(x[1]) > 1).map(lambda x: Evaluator.collectBus(x[1]))
-        dictBusCat=sc.broadcast(analyzer.getDictBusCat())
-        numCatBus=analyzer.getNumCatBus()
-        listDiversity=business.map(lambda x: Evaluator.computeDiversity(x,dictBusCat.value,numCatBus)).collect()
-        diversity=sum(listDiversity)/len(listDiversity)
-
+        # business=sc.parallelize(dictRec.items()).filter(lambda x: len(x[1]) > 1).map(lambda x: Evaluator.collectBus(x[1]))
+        # dictBusCat=sc.broadcast(analyzer.getDictBusCat())
+        # numCatBus=analyzer.getNumCatBus()
+        # listDiversity=business.map(lambda x: Evaluator.computeDiversity(x,dictBusCat.value,numCatBus)).collect()
+        # diversity=sum(listDiversity)/len(listDiversity)
+        #
+        """
+        dictBusCat=analyzer.getDictBusCat()
+        print("\nSpazio MEMORIA: {}".format(deep_getsizeof(dictBusCat,set())))
+        """
+        diversity=1
         # Registro le valutazioni appena calcolare per il fold preso in considerazione
         self.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus,diversity)
+
 
     def computeCoverage(self,analyzer,dictRec):
         # ************************ CoverageItems ***********************

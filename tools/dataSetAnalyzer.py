@@ -5,7 +5,8 @@ from itertools import islice
 import pandas as pd
 import json
 
-from conf.confDirFiles import reviewsJSON, businessJSON
+from conf.confDirFiles import reviewsJSON, businessJSON, usersJSON
+
 
 class DataScienceAnalyzer():
     def __init__(self,categoria):
@@ -16,7 +17,7 @@ class DataScienceAnalyzer():
         self.numBusiness=None
         self.numCatBus=None
 
-    def createDataSet(self):
+    def createDataSet(self,onlyFriends):
         # LETTURA DEL FILE JSON DELLE REVIEWS A PEZZI PER LA COSTRUZIONE DEL DATAFRAME CHE SERVIRÀ IN FASE DI PREDIZIONE DEI RATES
         dfRatings=self.createRatingsDF()
         # LETTURA DEL FILE JSON DEI BUSINESS A PEZZI PER LA COSTRUZIONE DEL DATAFRAME
@@ -25,15 +26,18 @@ class DataScienceAnalyzer():
         self.setDictBusCat(dictBusCat)
         print("\nDizionario delle categorie dei Business creato!")
         # Merge dei dataframe tra RATINGS e BUSINESS e Selezione dei soli ratings appartenenti ad una specifica categoria
-        dfMergeRB=pd.merge(dfRatings,dfBusiness,left_on='business_id',right_index=True, how="inner")
-        dfMergeRB=dfMergeRB[dfMergeRB["categories"].apply(lambda x: bool(set(x).intersection([self.categoria])))]
+        dfMerge=pd.merge(dfRatings,dfBusiness,left_on='business_id',right_index=True, how="inner")
+        if onlyFriends:
+            dfUsers=self.createUsersDF()
+            dfMerge=pd.merge(dfMerge,dfUsers,left_on='user_id',right_index=True, how="inner")
+        dfMerge=dfMerge[dfMerge["categories"].apply(lambda x: bool(set(x).intersection([self.categoria])))]
         # Vado a settare i parametri del DataFrame che riguardano: Numero di Business, Numero di Users, Numero di Categorie di Business
-        self.setNumBusiness(dfMergeRB["business_id"].unique().shape[0])
-        self.setNumUsers(dfMergeRB["user_id"].unique().shape[0])
-        self.setNumCatBus(len({category for listCategories in dfMergeRB["categories"].values for category in listCategories}))
+        self.setNumBusiness(dfMerge["business_id"].unique().shape[0])
+        self.setNumUsers(dfMerge["user_id"].unique().shape[0])
+        self.setNumCatBus(len({category for listCategories in dfMerge["categories"].values for category in listCategories}))
         print("\nDataFrame Merge finale creato!")
-        self.setDataFrame(dfMergeRB)
-        return dfMergeRB
+        self.setDataFrame(dfMerge)
+        return dfMerge
 
     def createRatingsDF(self):
         utenti=[]
@@ -77,6 +81,26 @@ class DataScienceAnalyzer():
         print("\nDataFrame dei Business creato!")
         return dfBusiness
 
+    def createUsersDF(self):
+        usersID=[]
+        usersName=[]
+        listFriends=[]
+        with open(usersJSON, 'r') as f:
+            while True:
+                lines_gen = list(islice(f, 1000))
+                if lines_gen:
+                    for line in lines_gen:
+                        oggettoJSON=json.loads(line)
+                        usersID.append(oggettoJSON["user_id"])
+                        usersName.append(oggettoJSON["name"])
+                        listFriends.append(oggettoJSON["friends"])
+                else:
+                    break
+
+        dfUsers=DataFrame({"users_name": usersName,"friends": listFriends},columns=["users_name","friends"],index=usersID)
+        print("\nDataFrame degli Users creato!")
+        return dfUsers
+
     def setDataFrame(self, dfMergeRB):
         self.dataFrame=dfMergeRB
 
@@ -97,6 +121,10 @@ class DataScienceAnalyzer():
         numCategories=len(set().union(*listCategories))
         return numCategories
 
+    def getFriends(self):
+        friends={user:set(friends) for user,friends in self.dataFrame.drop_duplicates(subset="user_id")[["user_id","friends"]].values}
+        return friends
+
     def setNumBusiness(self,numBusiness):
         self.numBusiness=numBusiness
 
@@ -114,7 +142,6 @@ class DataScienceAnalyzer():
 
     def getNumCatBus(self):
         return self.numCatBus
-
 
 if __name__ == '__main__':
     pass
