@@ -21,11 +21,9 @@ class Evaluator:
     def appendNtestRates(self,nTestRates):
         self.dataEval["nTestRates"].append(nTestRates)
 
-    def computeEvaluation(self,sc,dictRec,analyzer):
+    def computeEvaluation(self,dictRec,analyzer):
         """
         Calcolo delle diverse misure di valutazione per il dato Recommender passato in input per un certo fold
-        :param sc: SparkContext
-        :type sc: SparkContext
         :param dictRec: Dizionario che per ogni user contiene una lista di predizioni su items ordinati [(scorePred,item),(scorePred,item),...]
         :param analyzer: Analizzatore del DataSet originale dato in input
         :type analyzer: DataScienceAnalyzer

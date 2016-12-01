@@ -1,6 +1,8 @@
 __author__ = 'maury'
 
-from conf.confRS import categoria, onlyFriends
+from conf.confRS import categoria
+from conf.confSocialItemBased import onlyFriends
+
 
 """ File di configurazione generico delle diverse directories e files utilizzati. """
 

@@ -121,7 +121,7 @@ class DataScienceAnalyzer():
         numCategories=len(set().union(*listCategories))
         return numCategories
 
-    def getFriends(self):
+    def retrieveFriends(self):
         friends={user:set(friends) for user,friends in self.dataFrame.drop_duplicates(subset="user_id")[["user_id","friends"]].values}
         return friends
 
