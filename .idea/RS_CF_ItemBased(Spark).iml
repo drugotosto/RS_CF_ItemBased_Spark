@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$" />
     <content url="jar:///opt/spark-2.0.0-bin-hadoop2.7/python/lib/py4j-0.10.1-src.zip!/" />
     <content url="jar:///opt/spark-2.0.0-bin-hadoop2.7/python/lib/pyspark.zip!/" />
-    <orderEntry type="jdk" jdkName="Python 3.5.2 virtualenv at ~/PycharmEnvironment/DataScience(Spark)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.5.2 (/opt/anaconda3/bin/python3)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

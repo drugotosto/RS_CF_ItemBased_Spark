@@ -1,7 +1,7 @@
 __author__ = 'maury'
 
 """ File di configurazione generico del RS. """
-typeRecommender="ItemSocialBased"
+typeRecommender="CommunitiesBased"
 # Numero di Folds in cui si dividono gli users/ratings per effettuare la valutazione del RS (K-Fold Cross-Validation)
 nFolds=1
 # Parametro relativo al numero di elementi della lista dei sugerimenti finali rilasciati all'utente

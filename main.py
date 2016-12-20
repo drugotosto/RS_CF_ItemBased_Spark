@@ -14,6 +14,7 @@ from tools.tools import saveJsonData, printRecVal
 from tools.sparkEnvLocal import SparkEnvLocal
 from tools.dataSetAnalyzer import DataScienceAnalyzer
 from recommenders.itemSocialBased import ItemSocialBased
+from recommenders.communitiesBased import CommunitiesBased
 
 if __name__ == '__main__':
     startTime=time.time()
@@ -33,7 +34,7 @@ if __name__ == '__main__':
         friends=analyzer.retrieveFriends()
         rs=ItemSocialBased(name="ItemSocialBased",friends=friends)
     elif typeRecommender=="CommunitiesBased":
-        pass
+        rs=CommunitiesBased(name="CommunitiesBased")
     # """ Creazione dei files (trainSetFold_k/testSetFold_k) per ogni prova di valutazione"""
     # # SUDDIVISIONE DEGLI UTENTI IN K_FOLD (k=5)
     # usersFolds=np.array_split(choice(dfMergeRB["user_id"].unique(),dfMergeRB["user_id"].unique().shape[0],replace=False),5)
