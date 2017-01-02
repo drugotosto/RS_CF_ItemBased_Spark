@@ -3,10 +3,9 @@ __author__ = 'maury'
 from collections import defaultdict
 
 from recommenders.itemBased import ItemBased
-from conf.confSocialItemBased import onlyFriends
 from recommenders.recommender import Recommender
 
-class ItemSocialBased(ItemBased):
+class TagSocialBased(ItemBased):
     def __init__(self,name,friends):
         ItemBased.__init__(self,name=name)
         self.friends=friends
@@ -21,7 +20,7 @@ class ItemSocialBased(ItemBased):
         """
         # Unisco tutti i dati (da tutti i files contenuti nella directory train_k) ottengo (item,[(user,score),(user,score),...]
         item_user_pair=sc.textFile(directory+"/*").map(lambda line: Recommender.parseFileItem(line)).groupByKey()
-        item_meanRates=item_user_pair.map(lambda p: ItemBased.computeItemMean(p[0],p[1])).collectAsMap()
+        item_meanRates=item_user_pair.map(lambda p: ItemBased.computeMean(p[0],p[1])).collectAsMap()
         dictItem_meanRates=sc.broadcast(item_meanRates)
 
         """
@@ -37,7 +36,7 @@ class ItemSocialBased(ItemBased):
         """
         # Calcolo per ogni utente la lista di TUTTI gli items suggeriti ordinati secondo predizione. Ritorno un pairRDD del tipo (user,[(scorePred,item),(scorePred,item),...])
         friends=sc.broadcast(self.getFriends())
-        user_item_recs = user_item_pair.map(lambda p: ItemSocialBased.recommendations(p[0],p[1],itemsSimil.value,dictItem_meanRates.value,friends.value)).map(lambda p: ItemBased.convertFloat_Int(p[0],p[1])).collectAsMap()
+        user_item_recs = user_item_pair.map(lambda p: SocialBased.recommendations(p[0],p[1],itemsSimil.value,dictItem_meanRates.value,friends.value)).map(lambda p: ItemBased.convertFloat_Int(p[0],p[1])).collectAsMap()
         # Immagazzino la lista dei suggerimenti finali prodotti per sottoporla poi a valutazione
         self.setDictRec(user_item_recs)
 

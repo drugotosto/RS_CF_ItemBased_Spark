@@ -18,6 +18,7 @@ def printRecVal(evaluator,directory,fileName):
     # Creazione della directory se ancora assente
     if not os.path.exists(directory):
         os.makedirs(directory)
+    print("DATA EVAL: {}".format(evaluator.getDataEval()))
     with open(fileName+".json","w") as f:
         f.write(json.dumps({v:mean(k) for v,k in evaluator.getDataEval().items()}))
 

@@ -98,11 +98,6 @@ class Evaluator:
 
 
     def computeCoverage(self,analyzer,dictRec):
-        # ************************ CoverageItems ***********************
-        # _,items=zip(*[pair for user,listaPair in dictRec.items() for pair in listaPair if listaPair])
-        # numBusinessPers=len(set(items))
-        # percBus=numBusinessPers/analyzer.getNumBusiness()
-
         # *********************** Coverage Users/Items ************************
         dictUserPercBus={user:len(set([pair[1] for pair in listaPair]))/analyzer.getNumBusiness() for user,listaPair in dictRec.items() if listaPair}
         percUsers=len(dictUserPercBus)/analyzer.getNumUsers()
@@ -112,7 +107,7 @@ class Evaluator:
     @staticmethod
     def computeDiversity(listBusiness, dictBusCat, numCatBus):
         """
-        Calcolo della dìversità media degi Business presenti nella Top-N di ogni utente
+        Calcolo della dìversità media dei Business presenti nella Top-N di ogni utente
         :param dictRec: Dizionario che per ogni user contiene una lista di predizioni su items ordinati (user:[(scorePred,item),(scorePred,item),...])
         :param topN: Parametro che definisce lunghezza della lista dei Business suggeriti
         :return: Valore medio di Diversity

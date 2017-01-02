@@ -1,3 +1,5 @@
+from statistics import mean
+
 __author__ = 'maury'
 
 import os
@@ -10,6 +12,7 @@ from pyspark import SparkContext
 from tools.evaluator import Evaluator
 from conf.confDirFiles import datasetJSON, dirFolds, dirTest, dirTrain
 from conf.confRS import nFolds, percTestRates
+from tools.sparkEnvLocal import SparkEnvLocal
 
 
 class Recommender:
@@ -21,25 +24,25 @@ class Recommender:
         self.evaluator=Evaluator()
 
 
-    def createFolds(self,sc,usersFolds):
+    def createFolds(self,spEnv,usersFolds):
         """
         Creazione dei diversi TestSetFold/TrainTestFold partendo dal DataSet presente su file
-        :param sc: SparkContext utilizzato
-        :type sc: SparkContext
-        :param usersFolds: Lista di folds che separano i diversi utenti
+        :param spEnv: SparkContext di riferimento
+        :type spEnv: SparkEnvLocal
+        :param usersFolds: Lista di folds(arrays) che contengono insiemi di diversi utenti
         :return:
         """
         # Elimino la cartella che contiene i diversi files che rappresentano i diversi folds
         if os.path.exists(dirFolds):
             shutil.rmtree(dirFolds)
         # Creo la "matrice" dei Rates raggruppandoli secondo i vari utenti ottengo (user,[(item,score),(item,score),...])
-        user_item_pair=sc.textFile(datasetJSON).map(lambda line: Recommender.parseFileUser(line)).groupByKey()
+        user_item_pair=spEnv.getSc().textFile(datasetJSON).map(lambda line: Recommender.parseFileUser(line)).groupByKey()
         fold=0
         # Ciclo sul numero di folds stabiliti andando a creare ogni volta i trainSetFold e testSetFold corrispondenti
         while fold<nFolds:
 
             """ Costruizione dell'RDD che costituirà il TestSetFold finale """
-            trainUsers=sc.parallelize([item for sublist in usersFolds[:fold]+usersFolds[fold+1:] for item in sublist]).map(lambda x: (x,1))
+            trainUsers=spEnv.getSc().parallelize([item for sublist in usersFolds[:fold]+usersFolds[fold+1:] for item in sublist]).map(lambda x: (x,1))
             rddTestData=user_item_pair.subtractByKey(trainUsers)
             # Costruisco un Pair RDD filtrato dei soli users appartenenti al dato fold del tipo (user,([(user,item,score),...,(user,item,score)],[(user,item,score),...,(user,item,score)]))
             test_trainParz=rddTestData.map(lambda item: Recommender.addUser(item[0],item[1])).map(lambda item: Recommender.divideTrain_Test(item[0],item[1],percTestRates))
@@ -49,7 +52,7 @@ class Recommender:
             """ Costruizione dell'RDD che costituirà il TrainSetFold finale """
             # Recupero la seconda parte del campo Value di ogni elemento che rappresenta una prima parte del TrainTest del fold
             trainSetData2=test_trainParz.values().values().filter(lambda x: x).flatMap(lambda x: x)
-            testUsers=sc.parallelize(usersFolds[fold]).map(lambda x: (x,1))
+            testUsers=spEnv.getSc().parallelize(usersFolds[fold]).map(lambda x: (x,1))
             trainSetData1=user_item_pair.subtractByKey(testUsers).map(lambda item: Recommender.addUser(item[0],item[1])).values().flatMap(lambda x: x)
             trainSetData=trainSetData1.union(trainSetData2).distinct()
 
@@ -98,6 +101,11 @@ class Recommender:
         :return:
         """
         pass
+
+    @staticmethod
+    def computeMean(user_id,item_with_rating):
+        _,rates=zip(*item_with_rating)
+        return user_id,mean(rates)
 
     def retrieveTestData(self,directory):
         # Costruisco un dizionario {user : [(item,rate),(item,rate),...] dai dati del TestSet
