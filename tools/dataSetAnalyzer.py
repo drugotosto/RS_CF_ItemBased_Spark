@@ -24,8 +24,8 @@ class DataScienceAnalyzer():
         dfRatings=self.createRatingsDF()
         # LETTURA DEL FILE JSON DEI BUSINESS A PEZZI
         dfBusiness=self.createBusinessDF()
-        dictBusCat=dfBusiness["categories"].to_dict()
-        self.setDictBusCat(dictBusCat)
+        # dictBusCat=dfBusiness["categories"].to_dict()
+        # self.setDictBusCat(dictBusCat)
         print("\nDizionario delle categorie dei Business creato!")
         dfUsers=self.createUsersDF()
         # Merge dei dataframe tra RATINGS e BUSINESS
@@ -171,6 +171,18 @@ class DataScienceAnalyzer():
         users=set(dfMerge["user_id"].values)
 
         dfMerge["friends"]=dfMerge["friends"].apply(filterFriends)
+
+        """
+        # Recupero utenti che hanno non hanno friends
+        dfOnlyUsers=dfMerge.drop_duplicates(subset="user_id")
+        users=dfOnlyUsers[dfOnlyUsers["friends"].map(len)==0]["user_id"].values
+
+        # Filtro campo Friends per la seconda volta con gli utenti che non hanno friends
+        dfMerge["friends"]=dfMerge["friends"].apply(filterFriends)
+
+        # Rimovo da dfMerge tutti gli utenti senza friends
+        dfMerge=dfMerge[dfMerge["friends"].map(len)>0]
+        """
         return dfMerge
 
     def getCatBusiness(self, listBusiness):
@@ -207,9 +219,9 @@ class DataScienceAnalyzer():
 
     def setDataFrame(self, dfMergeRB):
         self.dataFrame=dfMergeRB
-
-    def setDictBusCat(self,dictBusCat):
-        self.dictBusCat=dictBusCat
+    #
+    # def setDictBusCat(self,dictBusCat):
+    #     self.dictBusCat=dictBusCat
 
     def setNumBusiness(self,numBusiness):
         self.numBusiness=numBusiness
@@ -222,9 +234,9 @@ class DataScienceAnalyzer():
 
     def getDataFrame(self):
         return self.dataFrame
-
-    def getDictBusCat(self):
-        return self.dictBusCat
+    #
+    # def getDictusCat(self):
+    #     return self.dictBusCat
 
     def getNumBusiness(self):
         return self.numBusiness

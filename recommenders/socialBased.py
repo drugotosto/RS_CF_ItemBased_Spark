@@ -1,50 +1,64 @@
 __author__ = 'maury'
 
-from collections import defaultdict
+from os.path import isfile
+from igraph import *
+import json
+import time
 
+from tools.sparkEnvLocal import SparkEnvLocal
 from recommenders.itemBased import ItemBased
 from recommenders.recommender import Recommender
+from conf.confDirFiles import userFriendsGraph, dirPathCommunities
+from conf.confCommunitiesFriends import *
 
 class SocialBased(ItemBased):
-    def __init__(self,name,friends):
+    def __init__(self,name,friendships):
         ItemBased.__init__(self,name=name)
-        self.friends=friends
+        # Settaggio del dizionazio delle amicizie (inzialmente non pesato)
+        self.friendships=friendships
 
-    def builtModel(self,sc,directory):
+    def builtModel(self,spEnv,directory):
         """
-        Costruzione del modello a secondo l'approccio CF ItemSocialBased
+        Costruzione del modello a secondo l'approccio CF ItemBased
+        :param spEnv: SparkContext di riferimento
+        :type spEnv: SparkEnvLocal
+        :param directory: Directory che contiene insieme di File che rappresentano il TestSet
         :return:
         """
         """
-        Calcolo del rate medio per ogni item e creazione della corrispondente broadcast variable
-        """
-        # Unisco tutti i dati (da tutti i files contenuti nella directory train_k) ottengo (item,[(user,score),(user,score),...]
-        item_user_pair=sc.textFile(directory+"/*").map(lambda line: Recommender.parseFileItem(line)).groupByKey()
-        item_meanRates=item_user_pair.map(lambda p: ItemBased.computeMean(p[0],p[1])).collectAsMap()
-        dictItem_meanRates=sc.broadcast(item_meanRates)
-
-        """
-        Calcolo delle somiglianze tra items e creazione della corrispondente broadcast variable
+        Calcolo media dei Ratings (per ogni user) e creazione della corrispondente broadcast variable
         """
         # Unisco tutti i dati (da tutti i files contenuti nella directory train_k) ottengo (user,[(item,score),(item,score),...]
-        user_item_pair=sc.textFile(directory+"/*").map(lambda line: Recommender.parseFileUser(line)).groupByKey().cache()
-        item_simsOrd=self.computeSimilarity(user_item_pair,dictItem_meanRates.value).collectAsMap()
-        itemsSimil=sc.broadcast(item_simsOrd)
+        user_item_pair=spEnv.getSc().textFile(directory+"/*").map(lambda line: Recommender.parseFileUser(line)).groupByKey()
+        user_meanRatesRatings=user_item_pair.map(lambda p: SocialBased.computeMean(p[0],p[1])).collectAsMap()
+        dictUser_meanRatesRatings=spEnv.getSc().broadcast(user_meanRatesRatings)
 
         """
-        Calcolo delle (Top_N) raccomandazioni personalizzate per i diversi utenti
+        Calcolo delle somiglianze tra users in base agli amici in comune e creazione della corrispondente broadcast variable
         """
-        # Calcolo per ogni utente la lista di TUTTI gli items suggeriti ordinati secondo predizione. Ritorno un pairRDD del tipo (user,[(scorePred,item),(scorePred,item),...])
-        friends=sc.broadcast(self.getFriends())
-        user_item_recs = user_item_pair.map(lambda p: SocialBased.recommendations(p[0],p[1],itemsSimil.value,dictItem_meanRates.value,friends.value)).map(lambda p: ItemBased.convertFloat_Int(p[0],p[1])).collectAsMap()
-        # Immagazzino la lista dei suggerimenti finali prodotti per sottoporla poi a valutazione
-        self.setDictRec(user_item_recs)
+        g=Graph.Read_Pickle(fname=open(userFriendsGraph,"rb"))
+        # listFriends=g.neighborhood(vertices=g.vs,order=1)
+        for user in g.vs:
+            print("\n FRIENDS: {}".format(g.neighbors(user.index)))
+        user_listFriends=spEnv.getSc().parallelize(self.getFriendships().items())
+        user_simsOrd=user_listFriends.map(lambda x: SocialBased.computeCommunitiesSimilarity(g))
+        # usersSimil=spEnv.getSc().broadcast(user_simsOrd)
+        # print("\n\nSim Users: {}".format(user_simsOrd.take(2)))
 
-        ris=[(user,listSugg) for user,listSugg in self.dictRec.items() if listSugg]
-        if ris:
-            print(ris)
-        else:
-            print("VUOTA")
+        # """
+        # Calcolo delle (Top_N) raccomandazioni personalizzate per i diversi utenti
+        # """
+        # user_item_hist=user_item_pair.collectAsMap()
+        # userHistoryRates=spEnv.getSc().broadcast(user_item_hist)
+        # # Calcolo per ogni utente la lista di TUTTI gli items suggeriti ordinati secondo predizione. Ritorno un pairRDD del tipo (user,[(scorePred,item),(scorePred,item),...])
+        # user_item_recs = user_simsOrd.map(lambda p: TagBased.recommendationsUserBased(p[0],p[1],userHistoryRates.value,dictUser_meanRatesRatings.value)).map(lambda p: TagBased.convertFloat_Int(p[0],p[1])).collectAsMap()
+        # # Immagazzino la lista dei suggerimenti finali prodotti per sottoporla poi a valutazione
+        # self.setDictRec(user_item_recs)
+        # # print("\nLista suggerimenti: {}".format(self.dictRec))
+
+    @staticmethod
+    def computeCommunitiesSimilarity(g):
+        pass
 
     @staticmethod
     def recommendations(user_id,items_with_rating,item_sims,item_meanRates,friends):
@@ -59,34 +73,131 @@ class SocialBased(ItemBased):
         :param friends:
         :return:
         """
-        # Dal momento che ogni item potrà essere il vicino di più di un item votato dall'utente dovrò aggiornare di volta in volta i valori
-        totals = defaultdict(int)
-        sim_sums = defaultdict(int)
-        for (item,rating) in items_with_rating:
-            # Recupero tutti i vicini del tale item
-            nearest_neighbors = item_sims.get(item,None)
-            if nearest_neighbors:
-                # Ciclo su tutti i vicini del tale item
-                for (neighbor,(sim,setUsers)) in nearest_neighbors:
-                    if onlyFriends:
-                        print("\nAMICI: {}".format(friends[user_id]))
-                        if neighbor!=item and friends[user_id] and friends[user_id]==setUsers:
-                            # Aggiorno il valore di rate e somiglianza per il vicino in questione
-                            totals[neighbor] += sim * (rating-item_meanRates.get(neighbor,None))
-                            sim_sums[neighbor] += abs(sim)
-                    else:
-                        if neighbor!=item:
-                            # Aggiorno il valore di rate e somiglianza per il vicino in questione
-                            totals[neighbor] += sim * (rating-item_meanRates.get(neighbor,None))
-                            sim_sums[neighbor] += abs(sim)
-        # Creo la lista dei rates normalizzati associati agli items per ogni user
-        scored_items = [(item_meanRates.get(item,None)+(total/sim_sums[item]),item) for item,total in totals.items() if sim_sums[item]!=0.0]
-        # Ordino la lista secondo il valore dei rates
-        scored_items.sort(reverse=True)
-        # Recupero i soli items
-        # ranked_items = [x[1] for x in scored_items]
-        return user_id,scored_items
+        pass
+
+    def createFriendsCommunities(self):
+
+        # Creazione del dizionario delle amicizie
+        self.createDizFriendships()
+
+        # Controllo esistenza del Grafo delle amicizie e nel caso lo vado a creare
+        if not isfile(userFriendsGraph):
+            self.createGraph()
+
+        # Calcolo le communities delle amicizie
+        self.createCommunities()
+
+    def createDizFriendships(self):
+        def createPairs(user,listFriends):
+            return [(user,friend) for friend in listFriends]
+
+        """ Creo gli archi del grafo mancanti """
+        listaList=[createPairs(user,listFriends) for user,listFriends in self.getFriendships().items()]
+        archiPresenti={coppia for lista in listaList for coppia in lista}
+        archiMancanti={(arco[1],arco[0]) for arco in archiPresenti if (arco[1],arco[0]) not in archiPresenti}
+        # print("\n- Numero di archi mancanti: {}".format(len(archiMancanti)))
+        archiDoppi=archiPresenti.union(archiMancanti)
+        # print("\n- Numero di archi/Amicizie (doppie) totali presenti sono: {}".format(len(archiDoppi)))
+
+        """ Costruisco il dizionario con archi doppi senza peso sugli archi """
+        dizFriendshipsDouble=defaultdict(list)
+        for k, v in archiDoppi:
+            dizFriendshipsDouble[k].append(v)
+        # print("\n- Numero di utenti: {}".format(len([user for user in dizFriendshipsDouble])))
+
+        """ Costruisco il dizionario con gli archi pesati (dato dal numero di amicizie in comune tra utenti) """
+        def createListFriendsDoubleWeight(user,dizFriendshipsDouble):
+            return [(friend,len(set(dizFriendshipsDouble[user])&set(dizFriendshipsDouble[friend]))+1) for friend in dizFriendshipsDouble[user]]
+
+        dizFriendshipsDoubleWeight={user:createListFriendsDoubleWeight(user,dizFriendshipsDouble) for user in dizFriendshipsDouble}
+
+        """ Per ogni arco (user1-user2) vado ad eliminare la controparte (user2-user1) """
+        archi=set()
+        for user,listFriends in dizFriendshipsDoubleWeight.items():
+            for elem in listFriends:
+                if (user,elem[0],elem[1]) not in archi and (elem[0],user,elem[1]) not in archi:
+                    archi.add((user,elem[0],elem[1]))
+
+        """ Costruisco il dizionario finale da salvare """
+        friendships=defaultdict(list)
+        for k,v,r in archi:
+            friendships[k].append((v,r))
+
+        print("\nNumero di AMICIZIE (singole) presenti sono: {}".format(sum([len(lista) for lista in friendships.values()])))
+        numUtenti=len(set([user for user in friendships]).union(set([user for lista in friendships.values() for user,_ in lista])))
+        print("\nNumero di UTENTI che sono presenti in communities: {}".format(numUtenti))
+
+        self.setFriendships(friendships)
+        print("\nDizionario delle amicizie pesato creato e settato!")
+
+    def createGraph(self):
+        def saveGraphs(g):
+            g.write_pickle(fname=open(userFriendsGraph,"wb"))
+            g.write_graphml(f=open(userFriendsGraph+".graphml","wb"))
+
+        g=Graph()
+        # Recupero i vertici (users) del grafo delle amicizie
+        users={user for user in self.getFriendships().keys()}.union({friend for listFriends in self.getFriendships().values() for friend,weight in listFriends})
+        for user in users:
+            g.add_vertex(name=user,gender="user",label=user)
+
+        def createPairs(user,listItems):
+            return [(user,item[0]) for item in listItems]
+
+        # Creo gli archi (amicizie) del grafo
+        listaList=[createPairs(user,listItems) for user,listItems in self.getFriendships().items()]
+        archi=[(user,elem) for lista in listaList for user,elem in lista]
+        g.add_edges(archi)
+        # Aggiungo i relativi pesi agli archi
+        weights=[weight for user,listItems in self.getFriendships().items() for _,weight in listItems]
+        g.es["weight"]=weights
+
+        saveGraphs(g)
+        print("\nSummary:\n{}".format(summary(g)))
+        print("\nGrafo delle amicizie creato e salvato!")
+
+    def createCommunities(self):
+        startTime=time.time()
+        g=Graph.Read_Pickle(fname=open(userFriendsGraph,"rb"))
+        # calculate dendrogram
+        dendrogram=None
+        clusters=None
+        if communityType=="all":
+            types=communitiesTypes
+        else:
+            types=[communityType]
+
+        for type in types:
+            if type=="fastgreedy":
+                dendrogram=g.community_fastgreedy(weights="weight")
+            elif type=="walktrap":
+                dendrogram=g.community_walktrap(weights="weight")
+            elif type=="label_propagation":
+                clusters=g.community_label_propagation(weights="weight")
+            elif type=="multilevel":
+                clusters=g.community_multilevel(weights="weight",return_levels=False)
+            elif type=="infomap":
+                clusters=g.community_infomap(edge_weights="weight")
+
+            # convert it into a flat clustering (VertexClustering)
+            if type!="label_propagation" and type!="multilevel" and type!="infomap":
+                clusters = dendrogram.as_clustering()
+            # get the membership vector
+            membership = clusters.membership
+            communitiesFriends=defaultdict(list)
+            for user,community in [(name,membership) for name, membership in zip(g.vs["name"], membership)]:
+                communitiesFriends[community].append(user)
+            json.dump(communitiesFriends,open(dirPathCommunities+"communitiesFriends_"+type+".json","w"))
+            print("\nClustering Summary for '{}' : \n{}".format(type,clusters.summary()))
+
+        print("\nFinito di calcolare le communities in TEMPO: {}".format((time.time()-startTime)/60))
 
 
-    def getFriends(self):
-        return self.friends
+    def setFriendships(self,friendships):
+        self.friendships=friendships
+
+    def getFriendships(self):
+        return self.friendships
+
+
+

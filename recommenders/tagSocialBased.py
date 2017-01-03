@@ -6,9 +6,9 @@ from recommenders.itemBased import ItemBased
 from recommenders.recommender import Recommender
 
 class TagSocialBased(ItemBased):
-    def __init__(self,name,friends):
+    def __init__(self,name,friendships):
         ItemBased.__init__(self,name=name)
-        self.friends=friends
+        self.friendships=friendships
 
     def builtModel(self,sc,directory):
         """
@@ -88,5 +88,8 @@ class TagSocialBased(ItemBased):
         return user_id,scored_items
 
 
-    def getFriends(self):
-        return self.friends
+    def createFriendsCommunities(self):
+        pass
+
+    def getFriendships(self):
+        return self.friendships

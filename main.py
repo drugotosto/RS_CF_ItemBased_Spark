@@ -1,3 +1,5 @@
+from recommenders.tagSocialBased import TagSocialBased
+
 __author__ = 'maury'
 
 import time
@@ -35,11 +37,13 @@ if __name__ == '__main__':
     elif typeRecommender=="TagBased":
         rs=TagBased(name="TagBased")
     elif typeRecommender=="SocialBased":
-        friends=analyzer.retrieveFriends()
-        rs=SocialBased(name="SocialBased",friends=friends)
+        friendships=analyzer.retrieveFriends()
+        rs=SocialBased(name="SocialBased",friendships=friendships)
+        rs.createFriendsCommunities()
     elif typeRecommender=="TagSocialBased":
-        friends=analyzer.retrieveFriends()
-        rs=SocialBased(name="TagSocialBased",friends=friends)
+        friendships=analyzer.retrieveFriends()
+        rs=TagSocialBased(name="TagSocialBased",friendships=friendships)
+        rs.createFriendsCommunities()
 
     """ Creazione dei files (trainSetFold_k/testSetFold_k) per ogni prova di valutazione"""
     # SUDDIVISIONE DEGLI UTENTI IN K_FOLD
@@ -54,17 +58,17 @@ if __name__ == '__main__':
         rs.builtModel(spEnv,dirTrain+str(fold))
         print("\nModello costruito!")
         """
-        Ho calcolato tutte le possibile raccomandazioni personalizzare per i vari utenti con tanto di predizione per ciascun item
-        Eseguo la valutazione del recommender utilizzando le diverse metriche (MAE,RMSE,Precision,Recall,...)
-        """
-        rs.retrieveTestData(dirTest+str(fold))
-        rs.getEvaluator().computeEvaluation(rs.getDictRec(),analyzer)
-        # print("\nEseguita Valutazione per Fold {}".format(fold))
+    #     Ho calcolato tutte le possibile raccomandazioni personalizzare per i vari utenti con tanto di predizione per ciascun item
+    #     Eseguo la valutazione del recommender utilizzando le diverse metriche (MAE,RMSE,Precision,Recall,...)
+    #     """
+    #     rs.retrieveTestData(dirTest+str(fold))
+    #     rs.getEvaluator().computeEvaluation(rs.getDictRec(),analyzer)
+    #     # print("\nEseguita Valutazione per Fold {}".format(fold))
         fold+=1
-
-    """
-    Salvataggio su file (json) dei risultati finali di valutazione (medie dei valori sui folds)
-    """
-    printRecVal(evaluator=rs.getEvaluator(),directory=dirPathOutput,fileName=dirPathOutput+rs.getName()+typeSimilarity+"_(numTags="+str(numTags)+",weightSim="+str(weightSim)+")")
-    print("\nComputazione terminata! Durata totale: {} min.".format((time.time()-startTime)/60))
-
+    #
+    # """
+    # Salvataggio su file (json) dei risultati finali di valutazione (medie dei valori sui folds)
+    # """
+    # printRecVal(evaluator=rs.getEvaluator(),directory=dirPathOutput,fileName=dirPathOutput+rs.getName()+typeSimilarity+"_(numTags="+str(numTags)+",weightSim="+str(weightSim)+")")
+    # print("\nComputazione terminata! Durata totale: {} min.".format((time.time()-startTime)/60))
+    #
