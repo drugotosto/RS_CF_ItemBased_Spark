@@ -37,7 +37,7 @@ class TagBased(ItemBased):
         # print("\nDIZ COM: {}".format(user_meanRatesTags))
 
         """
-        Calcolo delle somiglianze tra users in base a Communities e creazione della corrispondente broadcast variable
+        Calcolo delle somiglianze tra users in base a Communities e creazione del corrispondente RDD
         """
         # Ottengo l'RDD (tag,[(user,score),(user,score),...]
         tag_userVal_pairs=spEnv.getSc().textFile(userTagJSON).map(lambda line: Recommender.parseFileItem(line)).groupByKey().cache()
@@ -48,6 +48,7 @@ class TagBased(ItemBased):
         """
         Calcolo delle (Top_N) raccomandazioni personalizzate per i diversi utenti
         """
+        # Recupero storico dei Ratings dei vari utenti e ne faccio una V.B.
         user_item_hist=user_item_pair.collectAsMap()
         userHistoryRates=spEnv.getSc().broadcast(user_item_hist)
         # Calcolo per ogni utente la lista di TUTTI gli items suggeriti ordinati secondo predizione. Ritorno un pairRDD del tipo (user,[(scorePred,item),(scorePred,item),...])

@@ -1,5 +1,6 @@
 __author__ = 'maury'
 
+from itertools import combinations
 from os.path import isfile
 from igraph import *
 import json
@@ -8,8 +9,9 @@ import time
 from tools.sparkEnvLocal import SparkEnvLocal
 from recommenders.itemBased import ItemBased
 from recommenders.recommender import Recommender
-from conf.confDirFiles import userFriendsGraph, dirPathCommunities
+from conf.confDirFiles import userFriendsGraph
 from conf.confCommunitiesFriends import *
+from tools.tools import saveJsonData
 
 class SocialBased(ItemBased):
     def __init__(self,name,friendships):
@@ -36,14 +38,11 @@ class SocialBased(ItemBased):
         """
         Calcolo delle somiglianze tra users in base agli amici in comune e creazione della corrispondente broadcast variable
         """
-        g=Graph.Read_Pickle(fname=open(userFriendsGraph,"rb"))
-        # listFriends=g.neighborhood(vertices=g.vs,order=1)
-        for user in g.vs:
-            print("\n FRIENDS: {}".format(g.neighbors(user.index)))
-        user_listFriends=spEnv.getSc().parallelize(self.getFriendships().items())
-        user_simsOrd=user_listFriends.map(lambda x: SocialBased.computeCommunitiesSimilarity(g))
-        # usersSimil=spEnv.getSc().broadcast(user_simsOrd)
-        # print("\n\nSim Users: {}".format(user_simsOrd.take(2)))
+        if not os.path.exists(dirPathCommunities+communityType+"/SimilaritiesFiles"):
+            os.makedirs(dirPathCommunities+communityType+"/SimilaritiesFiles")
+        comm_listUsers=spEnv.getSc().textFile(fileFriendsCommunities).map(lambda x: json.loads(x))
+        friendships=spEnv.getSc().broadcast(self.friendships)
+        user_simsOrd=comm_listUsers.foreach(lambda x: SocialBased.computeCommunitiesSimilarity(x[0],x[1],friendships.value))
 
         # """
         # Calcolo delle (Top_N) raccomandazioni personalizzate per i diversi utenti
@@ -57,8 +56,18 @@ class SocialBased(ItemBased):
         # # print("\nLista suggerimenti: {}".format(self.dictRec))
 
     @staticmethod
-    def computeCommunitiesSimilarity(g):
-        pass
+    def computeCommunitiesSimilarity(comm,listUsers,friendships):
+        with open(dirPathCommunities+communityType+"/SimilaritiesFiles/communitiesFriendsSim_"+str(comm)+".json","w") as f:
+            """ Ciclo su tutte le possibili combinazioni di users che appartengono alla stessa community """
+            for user1,user2 in combinations(listUsers,2):
+                amici_user1=list(zip(*friendships[user1]))[0]
+                amici_user2=list(zip(*friendships[user2]))[0]
+                num=len(set(amici_user1+tuple(user1)).intersection(set(amici_user2+tuple(user2))))+1
+                den=len(set(amici_user1+tuple(user1)).union(set(amici_user2+tuple(user2))))+1
+                linea=((user1,(user2,num/den)))
+                f.write(json.dumps(linea)+"\n")
+                linea=((user2,(user1,num/den)))
+                f.write(json.dumps(linea)+"\n")
 
     @staticmethod
     def recommendations(user_id,items_with_rating,item_sims,item_meanRates,friends):
@@ -92,7 +101,7 @@ class SocialBased(ItemBased):
             return [(user,friend) for friend in listFriends]
 
         """ Creo gli archi del grafo mancanti """
-        listaList=[createPairs(user,listFriends) for user,listFriends in self.getFriendships().items()]
+        listaList=[createPairs(user,listFriends) for user,listFriends in self.friendships.items()]
         archiPresenti={coppia for lista in listaList for coppia in lista}
         archiMancanti={(arco[1],arco[0]) for arco in archiPresenti if (arco[1],arco[0]) not in archiPresenti}
         # print("\n- Numero di archi mancanti: {}".format(len(archiMancanti)))
@@ -109,24 +118,25 @@ class SocialBased(ItemBased):
         def createListFriendsDoubleWeight(user,dizFriendshipsDouble):
             return [(friend,len(set(dizFriendshipsDouble[user])&set(dizFriendshipsDouble[friend]))+1) for friend in dizFriendshipsDouble[user]]
 
-        dizFriendshipsDoubleWeight={user:createListFriendsDoubleWeight(user,dizFriendshipsDouble) for user in dizFriendshipsDouble}
+        friendships={user:createListFriendsDoubleWeight(user,dizFriendshipsDouble) for user in dizFriendshipsDouble}
 
-        """ Per ogni arco (user1-user2) vado ad eliminare la controparte (user2-user1) """
-        archi=set()
-        for user,listFriends in dizFriendshipsDoubleWeight.items():
-            for elem in listFriends:
-                if (user,elem[0],elem[1]) not in archi and (elem[0],user,elem[1]) not in archi:
-                    archi.add((user,elem[0],elem[1]))
+        # """ Per ogni arco (user1-user2) vado ad eliminare la controparte (user2-user1) """
+        # archi=set()
+        # for user,listFriends in dizFriendshipsDoubleWeight.items():
+        #     for elem in listFriends:
+        #         if (user,elem[0],elem[1]) not in archi and (elem[0],user,elem[1]) not in archi:
+        #             archi.add((user,elem[0],elem[1]))
+        #
+        # """ Costruisco il dizionario finale da salvare """
+        # friendships=defaultdict(list)
+        # for k,v,r in archi:
+        #     friendships[k].append((v,r))
 
-        """ Costruisco il dizionario finale da salvare """
-        friendships=defaultdict(list)
-        for k,v,r in archi:
-            friendships[k].append((v,r))
-
-        print("\nNumero di AMICIZIE (singole) presenti sono: {}".format(sum([len(lista) for lista in friendships.values()])))
-        numUtenti=len(set([user for user in friendships]).union(set([user for lista in friendships.values() for user,_ in lista])))
+        print("\nNumero di AMICIZIE (doppie) presenti sono: {}".format(sum([len(lista) for lista in friendships.values()])))
+        # numUtenti=len(set([user for user in friendships]).union(set([user for lista in friendships.values() for user,_ in lista])))
+        numUtenti=len(list(friendships.keys()))
         print("\nNumero di UTENTI che sono presenti in communities: {}".format(numUtenti))
-
+        time.sleep(10)
         self.setFriendships(friendships)
         print("\nDizionario delle amicizie pesato creato e settato!")
 
@@ -137,16 +147,21 @@ class SocialBased(ItemBased):
 
         g=Graph()
         # Recupero i vertici (users) del grafo delle amicizie
-        users={user for user in self.getFriendships().keys()}.union({friend for listFriends in self.getFriendships().values() for friend,weight in listFriends})
+        # users={user for user in self.getFriendships().keys()}.union({friend for listFriends in self.getFriendships().values() for friend,weight in listFriends})
+        users={user for user in self.getFriendships().keys()}
         for user in users:
             g.add_vertex(name=user,gender="user",label=user)
 
         def createPairs(user,listItems):
             return [(user,item[0]) for item in listItems]
 
-        # Creo gli archi (amicizie) del grafo
+        # Creo gli archi (amicizie) del grafo singole
         listaList=[createPairs(user,listItems) for user,listItems in self.getFriendships().items()]
-        archi=[(user,elem) for lista in listaList for user,elem in lista]
+        archi=[]
+        for lista in listaList:
+            for user,elem in lista:
+                if (elem,user) not in archi:
+                    archi.append((user,elem))
         g.add_edges(archi)
         # Aggiungo i relativi pesi agli archi
         weights=[weight for user,listItems in self.getFriendships().items() for _,weight in listItems]
@@ -187,11 +202,10 @@ class SocialBased(ItemBased):
             communitiesFriends=defaultdict(list)
             for user,community in [(name,membership) for name, membership in zip(g.vs["name"], membership)]:
                 communitiesFriends[community].append(user)
-            json.dump(communitiesFriends,open(dirPathCommunities+"communitiesFriends_"+type+".json","w"))
+            saveJsonData(communitiesFriends.items(),dirPathCommunities+"/"+type,dirPathCommunities+"/"+type+"/communitiesFriends.json")
             print("\nClustering Summary for '{}' : \n{}".format(type,clusters.summary()))
 
         print("\nFinito di calcolare le communities in TEMPO: {}".format((time.time()-startTime)/60))
-
 
     def setFriendships(self,friendships):
         self.friendships=friendships
