@@ -1,5 +1,3 @@
-from statistics import mean
-
 __author__ = 'maury'
 
 import os
@@ -7,7 +5,7 @@ import json
 import shutil
 from os import listdir
 from collections import defaultdict
-from pyspark import SparkContext
+from statistics import mean
 
 from tools.evaluator import Evaluator
 from conf.confDirFiles import datasetJSON, dirFolds, dirTest, dirTrain
@@ -32,9 +30,12 @@ class Recommender:
         :param usersFolds: Lista di folds(arrays) che contengono insiemi di diversi utenti
         :return:
         """
-        # Elimino la cartella che contiene i diversi files che rappresentano i diversi folds
+        # Elimino la cartella che contiene i diversi files che rappresentano i diversi folds altrimento ne creo una nuova
         if os.path.exists(dirFolds):
             shutil.rmtree(dirFolds)
+        else:
+            os.makedirs(dirFolds)
+
         # Creo la "matrice" dei Rates raggruppandoli secondo i vari utenti ottengo (user,[(item,score),(item,score),...])
         user_item_pair=spEnv.getSc().textFile(datasetJSON).map(lambda line: Recommender.parseFileUser(line)).groupByKey()
         fold=0
@@ -97,7 +98,6 @@ class Recommender:
         """
         Metodo astratto per la costruzione del modello a seconda dell'approccio utilizzato
         :param sc: SparkContext utilizzato
-        :param rdd: RDD iniziale creato dal file in input
         :return:
         """
         pass
@@ -108,7 +108,10 @@ class Recommender:
         return user_id,mean(rates)
 
     def retrieveTestData(self,directory):
-        # Costruisco un dizionario {user : [(item,rate),(item,rate),...] dai dati del TestSet
+        """
+        # Costruisco e setto un dizionario {user : [(item,rate),(item,rate),...] dai dati del TestSet e il numero di Test Ratings da predire
+        :param directory: Fold che contiene un insieme di file i quali contengono per ogni riga user,business,score
+        """
         files=[file for file in listdir(directory) if file.startswith("part-")]
         test_ratings=defaultdict(list)
         nTestRates=0

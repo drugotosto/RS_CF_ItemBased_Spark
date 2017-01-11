@@ -1,17 +1,17 @@
 __author__ = 'maury'
 
-from conf.confRS import tag
+from conf.confRS import tag, numRec, numTags
 
 """ File di configurazione generico delle diverse directories e files utilizzati. """
 
 # Directory (base) che contiene i diversi files Json dai quali poter costruire il Dataframe/RDD (filtrato) di input del RS
 directoryDataSets="/home/maury/Desktop/Datasets/Yelp/Dataset/yelp_dataset_challenge_academic_dataset/"
 # Directory di lavoro principale della categoria selezionata che contiene i files tramite i quali ci si basa per fare recommandations
-dirPathInput="/home/maury/Desktop/SparkSets/"+tag+"/"
+dirPathInput="/home/maury/Desktop/SparkSets/"+tag+"/DataSet_(numRec="+str(numRec)+" numTags="+str(numTags)+")/"
 # Directory che contiene tutti le diverse communities di amici trovare a seconda dell'algortimo utilizzato
 dirPathCommunities=dirPathInput+"Communities/"
 # Directory che contiene un file per ogni tipologia di Recommender di cui si sono calcolati i risultati della K-Fold Cross-Validation
-dirPathOutput="/home/maury/Desktop/SparkOutput/"+tag+"/"
+dirPathOutput="/home/maury/Desktop/SparkOutput/"+tag+"/DataSet_(numRec="+str(numRec)+" numTags="+str(numTags)+")/"
 
 # Directory con i diversi Folds di train/test sets per la K-Fold Cross-Validation
 dirFolds=dirPathInput+"Folds/"
