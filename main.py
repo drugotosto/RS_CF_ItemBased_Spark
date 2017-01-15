@@ -90,7 +90,7 @@ if __name__ == '__main__':
     else:
         fileName=dirPathOutput+rs.getName()+"/"+communityType+"_"+typeSimilarity+"_(nNeigh="+str(nNeigh)+",weightSim="+str(weightSim)+")"
     printRecVal(evaluator=rs.getEvaluator(),directory=dirPathOutput+rs.getName()+"/",fileName=fileName)
-    # print("\nComputazione terminata! Durata totale: {} min.".format((time.time()-startTime)/60))
+    print("\nComputazione terminata! Durata totale: {} min.".format((time.time()-startTime)/60))
 
 
     """
