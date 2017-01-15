@@ -13,19 +13,12 @@ class Evaluator:
         self.dataEval={"nTestRates":[],"nPredPers":[],"mae":[],"rmse":[],"precision":[],"recall":[],"f1":[],"covUsers":[],"covMedioBus":[]}
 
 
-    def setTestRatings(self,test_ratings):
-        self.test_ratings=test_ratings
-
-    def appendNtestRates(self,nTestRates):
-        self.dataEval["nTestRates"].append(nTestRates)
-
     def computeEvaluation(self,dictRec,analyzer):
         """
         Calcolo delle diverse misure di valutazione per il dato Recommender passato in input per un certo fold
-        :param dictRec: Dizionario che per ogni user contiene una lista di TopN raccomandazioni su items ordinati -> user:[(scorePred,item),(scorePred,item),...]
+        :param dictRec: Dizionario che per ogni user contiene una lista di tutte le raccomandazioni possibili su items ordinati -> user:[(scorePred,item),(scorePred,item),...]
         :param analyzer: Analizzatore del DataSet originale dato in input
         :type analyzer: DataScienceAnalyzer
-        :return:
         """
         precisions=[]
         recalls=[]
@@ -33,27 +26,30 @@ class Evaluator:
         listRMSEfold=[]
         # Numero di predizioni personalizzate che si è stati in grado di fare su tutto il fold
         nPredPers=0
-        # Ciclo sul dizionario del test per recuperare le coppie (ratePred,rateTest)
+        nUserPers=0
+        # Ciclo su ogni user del test per recuperare la lista di Predizioni da testare: lista di coppie [(ratePred,rateTest)...]
         for userTest,ratingsTest in self.test_ratings.items():
-            # Controllo se per il suddetto utente è possibile effettuare una predizione personalizzata
+            # Controllo se per il suddetto utente è possibile effettuare una predizione personalizzata (la lista di suggerimenti contiene almeno 1 elemento)
             if userTest in dictRec and len(dictRec[userTest])>0:
-                # Coppie di (TrueRates,PredRates) preso in esame il tale utente
+                nUserPers+=1
+                # Lista di coppie di (TrueRates,PredRates) prese in esame per l'active user
                 pairsRatesPers=[]
-                # Numero di items tra quelli ritenuti rilevanti dall'utente che sono stati anche fatti tornare
-                numTorRil=0
                 # Numero totale di items ritenuti rilevanti dall'utente
                 nTotRil=0
+                # Numero di items tra quelli ritenuti rilevanti dall'utente che fanno anche parte della lista dei suggerimenti
+                numTorRil=0
                 predRates,items=zip(*dictRec[userTest])
                 # Ciclo su tutti gli items per cui devo predire il rate
                 for item,rate in ratingsTest:
-                    # Controllo che l'item sia tra quelli per cui si è fatta una predizione (fa parte di uno di quelli della lista Top-N suggerita)
+                    # Controllo che l'item sia tra quelli per cui si è fatta una predizione (fa parte di uno di quelli della lista dei suggerimenti)
                     if item in items:
                         # Aggiungo la coppia (ScorePredetto,ScoreReale) utilizzata per MAE,RMSE
                         pairsRatesPers.append((predRates[items.index(item)],rate))
+                        # Tenendo conto di tutta la lista dei suggerimenti vedo se l'item votato realmente dall'active user risulta presente
                         nPredPers+=1
 
                     # Controllo se l'item risulta essere rilevante
-                    if rate>3:
+                    if rate>=3:
                         nTotRil+=1
                         #  Controllo nel caso sia presente nei TopN suggeriti
                         if item in items[:topN]:
@@ -76,7 +72,7 @@ class Evaluator:
                     precisions.append(numTorRil/topN)
 
         """************** Calcolo delle CoverageItems/CoverageUsers *****************"""
-        percUsers,percMedioBus=self.computeCoverage(analyzer,dictRec)
+        percUsers,percMedioBus=self.computeCoverage(analyzer,dictRec,nUserPers)
 
         """
         dictBusCat=analyzer.getDictBusCat()
@@ -86,14 +82,33 @@ class Evaluator:
         self.appendMisuresFold(nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus)
 
 
-    def computeCoverage(self,analyzer,dictRec):
-        # *********************** Coverage Users/Items ************************
-        dictUserPercBus={user:len(set([pair[1] for pair in listaPair]))/analyzer.getNumBusiness() for user,listaPair in dictRec.items() if listaPair}
-        percUsers=len(dictUserPercBus)/analyzer.getNumUsers()
-        percMedioBus=sum(dictUserPercBus.values())/len(dictUserPercBus)
+    def computeCoverage(self,analyzer,dictRec,nUserPers):
+        """
+        Computazione dello User Space Covarage e dello Item Catalog Coverage
+        :param analyzer: Analizzatore del DataSet originale dato in input
+        :param dictRec: Dizionario che per ogni user contiene una lista di tutte le raccomandazioni possibili su items ordinati -> user:[(scorePred,item),(scorePred,item),...]
+        :return: Percentuale degli utenti del fold per cui è stata prodotto almeno un suggerimento, Copertura media in percentuale (sugli users del fold) del catalogo degli items
+        """
+        dictUserPercBus={user:len(set([pair[1] for pair in listaPair]))/analyzer.getNumBusiness() for user,listaPair in dictRec.items() if len(listaPair)>0}
+        """ User Space Coverage """
+        # Percetuale di utenti (per il fold considerato) per i quali è stato possibile riporate una lista dei suggerimenti non vuota
+        percUsers=nUserPers/self.nTestUsers
+        # Media delle percentuali (per il fold considerato) di copertura dei business su tutti gli utenti del fold
+        """ Catalogo Coverage """
+        percMedioBus=mean(dictUserPercBus.values())
         return percUsers,percMedioBus
 
     def appendMisuresFold(self,nPredPers,listMAEfold,listRMSEfold,recalls,precisions,percUsers,percMedioBus):
+        """
+        Aggiungo per ogni fold i valori delle diverse metriche calcolate
+        :param nPredPers: Numero delle predizioni personalizzate che sono stato in grado di eseguire
+        :param listMAEfold: Media sugli utenti del fold del MAE
+        :param listRMSEfold: Media sugli utenti del fold del RSME
+        :param recalls: Media sugli utenti del Fold del valore di RECALL
+        :param precisions: Media sugli utenti del Fold del valore di PRECISION
+        :param percUsers: Percentuale di utenti sul fold che hanno avuto una lista dei suggerimenti non vuota
+        :param percMedioBus: Copertura media in percentuale (considerando tutti fli utenti del fold) del catalogo degli items
+        """
         self.dataEval["nPredPers"].append(nPredPers)
         # Calcolo del valore medio di MAE,RMSE sui vari utenti appartenenti al fold
         # print("MAE (personalizzato) medio fold: {}".format(mean(listMAEfold)))
@@ -112,8 +127,17 @@ class Evaluator:
         self.dataEval["covMedioBus"].append(percMedioBus)
         self.dataEval["covUsers"].append(percUsers)
 
+    def setTestRatings(self,test_ratings):
+        self.test_ratings=test_ratings
+
+    def appendNtestRates(self,nTestRates):
+        self.dataEval["nTestRates"].append(nTestRates)
+
     def getDataEval(self):
         return self.dataEval
+
+    def setNumTestUsers(self,nTestUsers):
+        self.nTestUsers=nTestUsers
 
 
 

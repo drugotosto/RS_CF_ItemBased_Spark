@@ -20,6 +20,7 @@ def printRecVal(evaluator,directory,fileName):
         os.makedirs(directory)
     print("DATA EVAL: {}".format(evaluator.getDataEval()))
     with open(fileName+".json","w") as f:
+        # Calcolo della media dei valori trovati su tutti i fold
         f.write(json.dumps({v:mean(k) for v,k in evaluator.getDataEval().items()}))
 
 def saveJsonData(data,directory,fileName):

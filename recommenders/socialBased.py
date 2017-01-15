@@ -40,20 +40,28 @@ class SocialBased(ItemBased):
         """
         Calcolo delle somiglianze tra users in base alle CommunitiesFriends e creazione del corrispondente RDD
         """
-        nNeigh=self.nNeigh
-        comm_listUsers=spEnv.getSc().textFile(dirPathCommunities+"/"+self.communityType+"/communitiesFriends.json").map(lambda x: json.loads(x))
-        user_simsOrd=self.computeSimilarityFriends(spEnv,comm_listUsers).map(lambda p: ItemBased.nearestNeighbors(p[0],p[1],nNeigh)).filter(lambda p: p!=None)
-        # print(user_simsOrd.take(2))
-        # for user,user_valPairs in user_simsOrd.take(2):
+        if not os.path.exists(dirPathCommunities+"/"+self.communityType+"/user_simsOrd/"):
+            nNeigh=self.nNeigh
+            comm_listUsers=spEnv.getSc().textFile(dirPathCommunities+"/"+self.communityType+"/communitiesFriends.json").map(lambda x: json.loads(x))
+            user_simsOrd=self.computeSimilarityFriends(spEnv,comm_listUsers).map(lambda p: SocialBased.nearestNeighbors(p[0],p[1],nNeigh)).filter(lambda p: p!=None)
+            user_simsOrd.map(lambda x: json.dumps(x)).saveAsTextFile(dirPathCommunities+"/"+self.communityType+"/user_simsOrd/")
+        else:
+            print("\nLe somiglianze tra friends appartenenti alle stesse communities (trovate dall'algoritmo {}) sono già presenti!".format(self.communityType))
+            user_simsOrd=spEnv.getSc().textFile(dirPathCommunities+"/"+self.communityType+"/user_simsOrd/").map(lambda x: json.loads(x))
+
+        # print("\nDOPO")
+        # print(user_sims.take(2))
+        # for user,user_valPairs in user_sims.take(1):
         #     print("\nUser : {}".format(user))
         #     print("User - PairVal :{}".format(list(user_valPairs)))
 
         """
-        Calcolo delle (Top_N) raccomandazioni personalizzate per i diversi utenti
+        Calcolo delle raccomandazioni personalizzate per i diversi utenti
         """
         user_item_hist=user_item_pair.collectAsMap()
         userHistoryRates=spEnv.getSc().broadcast(user_item_hist)
         # Calcolo per ogni utente la lista di TUTTI gli items suggeriti ordinati secondo predizione. Ritorno un pairRDD del tipo (user,[(scorePred,item),(scorePred,item),...])
+        """ Filtraggio su users dato fold """
         user_item_recs = user_simsOrd.map(lambda p: SocialBased.recommendationsUserBasedSocial(p[0],p[1],userHistoryRates.value,dictUser_meanRatesRatings.value)).map(lambda p: TagBased.convertFloat_Int(p[0],p[1])).collectAsMap()
         # Immagazzino la lista dei suggerimenti finali prodotti per sottoporla poi a valutazione
         self.setDictRec(user_item_recs)
@@ -61,15 +69,17 @@ class SocialBased(ItemBased):
         # print("\nLista suggerimenti: {}".format(self.dictRec))
 
     def computeSimilarityFriends(self,spEnv,rdd):
-        """Calcolo il valore di somiglianza tra tutte le coppie di users che appartengono alla stessa community e salvo i valori su files"""
-        if not os.path.exists(dirPathCommunities+self.communityType+"/SimilaritiesFiles"):
-            print("\nVado a calcolare le somiglianze tra friends che appartengono alle stesse community trovate dall'algortimo {}!".format(self.communityType))
-            os.makedirs(dirPathCommunities+self.communityType+"/SimilaritiesFiles")
-            friendships=spEnv.getSc().broadcast(self.friendships)
-            communityType=self.communityType
-            rdd.foreach(lambda x: SocialBased.computeCommunitiesSimilarity(x[0],x[1],friendships.value,communityType))
-        else:
-            print("\nLe somiglianze tra friends appartenenti alle stesse communities (trovate dall'algoritmo {}) già presenti!".format(self.communityType))
+        """
+        Calcolo il valore di somiglianza tra tutte le coppie di users che appartengono alla stessa community e salvo i valori su files
+        :param spEnv:
+        :param rdd:
+        :return:
+        """
+        print("\nVado a calcolare le somiglianze tra friends che appartengono alle stesse community trovate dall'algortimo {}!".format(self.communityType))
+        os.makedirs(dirPathCommunities+self.communityType+"/SimilaritiesFiles")
+        friendships=spEnv.getSc().broadcast(self.friendships)
+        communityType=self.communityType
+        rdd.foreach(lambda x: SocialBased.computeCommunitiesSimilarity(x[0],x[1],friendships.value,communityType))
 
         """ Recupero i valori appena calcolati per costruire l'RDD finale """
         user_sims=spEnv.getSc().textFile(dirPathCommunities+self.communityType+"/SimilaritiesFiles/*").map(lambda x: json.loads(x)).groupByKey()
@@ -95,11 +105,10 @@ class SocialBased(ItemBased):
         Per ogni utente ritorno una lista (personalizzata) di items sugeriti in ordine di rate.
         N.B: Per alcuni user non sarà possibile raccomandare alcun item -> Lista vuota
         Versione che tiene conto solamente dei valori di somiglianza derivanti dagli amici dell'active user
-        :param user_id:
-        :param items_with_rating:
-        :param item_sims:
-        :param item_meanRates:
-        :param friends:
+        :param user_id: utente per il quale rilasciare la lista di raccomandazioni
+        :param users_with_sim: Lista di elementi del tipo [(user,valSim),(user,ValSim),...]
+        :param userHistoryRates: Dizionario del tipo user:[(item,score),(item,score),...]
+        :param user_meanRates: Dizionario che per ogni utente contiene valore Medio Rating
         :return:
         """
         # Dal momento che ogni item potrà essere il vicino di più di un item votato dall'utente dovrò aggiornare di volta in volta i valori
@@ -116,7 +125,11 @@ class SocialBased(ItemBased):
                     totals[item] += sim * (rate-user_meanRates.get(vicino,None))
                     sim_sums[item] += abs(sim)
         # Creo la lista dei rates normalizzati associati agli items per ogni user
-        scored_items = [(user_meanRates.get(user_id,None)+(total/sim_sums[item]),item) for item,total in totals.items() if sim_sums[item]!=0.0]
+        """
+            N.B. La lista potrà essere anche vuota se per tutti gli items votati dall'utente non esisterà nemmeno un vicino con valore di somiglianza complessivo > 0.0
+            Rilascio la lista dei soli items che ha senso suggerire, quelli più somiglianti complessivamente, tenendo conto di tutti gli items votati dall'utente
+        """
+        scored_items = [(user_meanRates.get(user_id,None)+(total/sim_sums[item]),item) for item,total in totals.items() if sim_sums[item]>0.0]
         # Ordino la lista secondo il valore dei rates
         scored_items.sort(reverse=True)
         # Recupero i soli items
@@ -128,9 +141,7 @@ class SocialBased(ItemBased):
             print("\nCreazione del grafo delle amicizie!")
             # Creazione del dizionario delle amicizie
             self.createDizFriendships()
-
-            # Controllo esistenza del Grafo delle amicizie e nel caso lo vado a creare
-            # if not isfile(userFriendsGraph):
+            # Creazione Grafo delle amicizie
             self.createGraph()
         else:
             print("\nIl grafo delle amicizie è già presente!")
@@ -184,8 +195,7 @@ class SocialBased(ItemBased):
         print("\nNumero di AMICIZIE (doppie) presenti sono: {}".format(sum([len(lista) for lista in friendships.values()])))
         # numUtenti=len(set([user for user in friendships]).union(set([user for lista in friendships.values() for user,_ in lista])))
         numUtenti=len(list(friendships.keys()))
-        print("\nNumero di UTENTI che sono presenti in communities: {}".format(numUtenti))
-        time.sleep(10)
+        print("\nNumero di UTENTI che sono presenti in communities: {} (alcuni non avevano amicizie...)".format(numUtenti))
         self.setFriendships(friendships)
         print("\nDizionario delle amicizie pesato creato e settato!")
 

@@ -9,7 +9,6 @@ from recommenders.itemBased import ItemBased
 from tools.sparkEnvLocal import SparkEnvLocal
 from conf.confItemBased import weightSim
 
-
 class TagBased(ItemBased):
     def __init__(self,name):
         ItemBased.__init__(self,name=name)
@@ -46,7 +45,7 @@ class TagBased(ItemBased):
             nNeigh=self.nNeigh
             # Ottengo l'RDD con elementi (tag,[(user1,score),(user2,score),...]
             tag_userVal_pairs=spEnv.getSc().textFile(userTagJSON).map(lambda line: TagBased.parseFileItem(line)).groupByKey().cache()
-            user_simsOrd=self.computeSimilarity(spEnv,tag_userVal_pairs,dictUser_meanRatesTags.value).map(lambda p: TagBased.nearestNeighbors(p[0],p[1],nNeigh)).map(lambda p: TagBased.removeOneRate(p[0],p[1])).filter(lambda p: p!=None)
+            user_simsOrd=self.computeSimilarityTag(spEnv,tag_userVal_pairs,dictUser_meanRatesTags.value).map(lambda p: TagBased.nearestNeighbors(p[0],p[1],nNeigh)).map(lambda p: TagBased.removeOneRate(p[0],p[1])).filter(lambda p: p!=None)
             user_simsOrd.map(lambda x: json.dumps(x)).saveAsTextFile(dirPathInput+"user_simsOrd(weightSim="+str(weightSim)+")/")
         else:
             print("\nLa somiglianza tra Users e già presente")
@@ -57,7 +56,7 @@ class TagBased(ItemBased):
         #     print("User - PairVal :{}".format(list(user_valPairs)))
 
         """
-        Calcolo delle (Top_N) raccomandazioni personalizzate per i diversi utenti
+        Calcolo delle raccomandazioni personalizzate per i diversi utenti
         """
         # Recupero storico dei Ratings dei vari utenti e ne faccio una V.B.
         user_item_hist=user_item_pair.collectAsMap()
@@ -69,8 +68,7 @@ class TagBased(ItemBased):
         print("\nLista di raccomandazioni calcolata!")
         # print("\nLista suggerimenti: {}".format(self.dictRec))
 
-
-    def computeSimilarity(self,spEnv,tag_userVal_pairs,dictUser_meanRatesTags):
+    def computeSimilarityTag(self,spEnv,tag_userVal_pairs,dictUser_meanRatesTags):
         """
         Vado a calcolare per ogni user la lista dei Top-N users più simili in ordine decrescente di somiglianza (pesata sul numero di tags in comune)
         :param tag_userVal_pairs: Pair RDD del tipo: (tag,[(user1,score),(user2,score),...]
@@ -132,7 +130,11 @@ class TagBased(ItemBased):
                     totals[item] += sim * (rate-user_meanRates.get(vicino,None))
                     sim_sums[item] += abs(sim)
         # Creo la lista dei rates normalizzati associati agli items per ogni user
-        scored_items = [(user_meanRates.get(user_id,None)+(total/sim_sums[item]),item) for item,total in totals.items() if sim_sums[item]!=0.0]
+        """
+            N.B. La lista potrà essere anche vuota se per tutti gli items votati dall'utente non esisterà nemmeno un vicino con valore di somiglianza complessivo > 0.0
+            Rilascio la lista dei soli items che ha senso suggerire, quelli più somiglianti complessivamente, tenendo conto di tutti gli items votati dall'utente
+        """
+        scored_items = [(user_meanRates.get(user_id,None)+(total/sim_sums[item]),item) for item,total in totals.items() if sim_sums[item]>0.0]
         # Ordino la lista secondo il valore dei rates
         scored_items.sort(reverse=True)
         # Recupero i soli items

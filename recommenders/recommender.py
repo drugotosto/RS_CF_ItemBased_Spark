@@ -115,15 +115,18 @@ class Recommender:
         files=[file for file in listdir(directory) if file.startswith("part-")]
         test_ratings=defaultdict(list)
         nTestRates=0
+        usersTest=set()
         for fileName in files:
             with open(directory+"/"+fileName) as f:
                 for line in f.readlines():
                     nTestRates+=1
                     jsonLine=json.loads(line)
                     test_ratings[jsonLine[0]].append((jsonLine[1],jsonLine[2]))
+                    usersTest.add(jsonLine[0])
 
         self.evaluator.setTestRatings(test_ratings)
         self.evaluator.appendNtestRates(nTestRates)
+        self.evaluator.setNumTestUsers(len(usersTest))
 
     def getName(self):
         return str(self.name)
